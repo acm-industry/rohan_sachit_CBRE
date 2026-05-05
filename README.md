@@ -29,39 +29,35 @@ final_project/
 ## Quick start
 
 ```bash
-# 1. Set up a Python env (Python ≥ 3.9)
+# 1. Set up a Python env (Python ≥ 3.9) and install runtime deps
 python3 -m venv .venv && source .venv/bin/activate
-# Install whatever your agent needs (LangGraph, OpenAI, etc.).
+pip install -r requirements.txt
 
-# 2. Build your agent. It must expose a single callable:
-#       def classify(turns: list[dict], caller_phone: str | None) -> dict
-#    Returning the fields documented in evaluation/prediction.py.
-#
-#    Note: each eval row also carries caller_known_in_profiles: bool — true when
-#    caller_phone matches an entry in operational/caller_profiles.json. The
-#    harness only forwards `turns` and `caller_phone` to your callable; if you
-#    want to use the flag, look it up yourself from caller_profiles.json.
-
-# 3. Run on the dev set (with labels — for self-evaluation)
+# 2. Run the agent on the dev set (with labels — for self-evaluation)
 python evaluation/run_eval.py \
-    --agent your_module.your_agent:classify \
+    --agent agent.classify:classify \
     --eval evaluation/eval_transcripts_dev.json \
     --out predictions.json
 
-# 4. Score yourself
+# 3. Score yourself
 python evaluation/scoring.py \
     --eval evaluation/eval_transcripts_dev.json \
     --ground-truth evaluation/dev_labels.json \
     --predictions predictions.json
 
-# 5. When you're ready to submit, generate predictions on the test set:
+# 4. Final test-set run (used for grading)
 python evaluation/run_eval.py \
-    --agent your_module.your_agent:classify \
+    --agent agent.classify:classify \
     --eval evaluation/eval_transcripts_test.json \
     --out predictions.json
-# Submit predictions.json + your repo. We grade with the same scoring.py
-# against held-out labels.
 ```
+
+The agent exposes a single callable, `agent.classify:classify(turns, caller_phone) -> dict`,
+returning the fields documented in [`evaluation/prediction.py`](evaluation/prediction.py).
+Each eval row also carries `caller_known_in_profiles: bool` — true when
+`caller_phone` matches [`operational/caller_profiles.json`](operational/caller_profiles.json).
+The harness forwards only `turns` and `caller_phone`; the agent looks the
+profile up itself.
 
 ## What you submit
 
