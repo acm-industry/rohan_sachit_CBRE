@@ -46,7 +46,8 @@ from agent.rag import COLLECTION_NAME, STORE_DIR  # noqa: E402
 DEFAULT_K = 5
 # The set of metadata keys callers can safely pass through `filters` —
 # matches the schema written by the builder. Anything outside this list
-# would silently match nothing in the chroma store.
+# would silently match nothing in the chroma store. A unit test asserts
+# this stays in lockstep with `agent.rag.METADATA_KEYS`.
 FILTERABLE_KEYS = (
     "ticket_id",
     "intake_category",
@@ -59,6 +60,9 @@ FILTERABLE_KEYS = (
     "building_type",
     "city",
     "was_audit_flagged",
+    "audit_over_escalated",
+    "audit_reclassified",
+    "audit_floor_wrong",
 )
 
 
@@ -73,10 +77,17 @@ class RetrievedRecord:
     `distance` is chroma's L2 distance between the query embedding and
     this document's embedding (lower = more similar; 0.0 = identical).
     None when the underlying call didn't surface a score.
+
+    The `corrected_*` properties are the AC's "relabel" path for
+    audit-flagged records: when the QA team reclassified or de-escalated
+    a ticket, classifier prompts should learn from the corrected label,
+    not the flawed intake label.
     """
     text: str
     metadata: Mapping[str, Any]
     distance: Optional[float] = None
+
+    # ─── Raw metadata accessors ────────────────────────────────────────
 
     @property
     def ticket_id(self) -> Optional[str]:
@@ -91,12 +102,65 @@ class RetrievedRecord:
         return self.metadata.get("intake_subcategory")
 
     @property
+    def intake_risk_level(self) -> Optional[str]:
+        return self.metadata.get("intake_risk_level")
+
+    @property
+    def final_category(self) -> Optional[str]:
+        return self.metadata.get("final_category")
+
+    @property
     def final_subcategory(self) -> Optional[str]:
         return self.metadata.get("final_subcategory")
 
     @property
+    def final_risk_level(self) -> Optional[str]:
+        return self.metadata.get("final_risk_level")
+
+    @property
     def assigned_vendor_id(self) -> Optional[str]:
         return self.metadata.get("assigned_vendor_id")
+
+    @property
+    def is_audit_flagged(self) -> bool:
+        return bool(self.metadata.get("was_audit_flagged"))
+
+    @property
+    def was_reclassified(self) -> bool:
+        return bool(self.metadata.get("audit_reclassified"))
+
+    @property
+    def was_over_escalated(self) -> bool:
+        return bool(self.metadata.get("audit_over_escalated"))
+
+    # ─── Corrected accessors — the audit-aware view ────────────────────
+
+    @property
+    def corrected_category(self) -> Optional[str]:
+        """`final_category` when the auditor reclassified, else `intake_category`."""
+        if self.was_reclassified and self.metadata.get("final_category"):
+            return self.metadata.get("final_category")
+        return self.metadata.get("intake_category")
+
+    @property
+    def corrected_subcategory(self) -> Optional[str]:
+        """`final_subcategory` when the auditor reclassified, else `intake_subcategory`.
+
+        This is the *primary* label the classifier should learn from on
+        retrieved records — using `intake_subcategory` directly perpetuates
+        the original miss on flagged tickets (e.g. "roof_leak" intake that
+        was actually a `structural` life-safety call).
+        """
+        if self.was_reclassified and self.metadata.get("final_subcategory"):
+            return self.metadata.get("final_subcategory")
+        return self.metadata.get("intake_subcategory")
+
+    @property
+    def corrected_risk_level(self) -> Optional[str]:
+        """`final_risk_level` when the auditor flagged over-escalation, else intake."""
+        if self.was_over_escalated and self.metadata.get("final_risk_level"):
+            return self.metadata.get("final_risk_level")
+        return self.metadata.get("intake_risk_level")
 
 
 _STORE: Any = None
@@ -218,3 +282,60 @@ def _reset_caches_for_tests() -> None:
     """Drop the cached Chroma client so tests can swap stores mid-process."""
     global _STORE
     _STORE = None
+
+
+def detect_label_conflict(
+    records: List["RetrievedRecord"],
+    *,
+    use_corrected: bool = True,
+) -> Optional[dict]:
+    """Surface conflicting subcategory labels across a retrieved set.
+
+    The brief: "When a retrieved set contains conflicting labels for
+    similar calls, the agent surfaces the conflict (test/log) rather
+    than silently picking the most frequent." This is the surfacer.
+
+    Returns None when records agree (or fewer than 2 meaningful labels
+    exist). When they disagree, returns a dict the classifier or the
+    clarification node can log / act on:
+
+        {
+          "conflict": True,
+          "labels": {"pipe_leak": 3, "drainage_backup": 2},
+          "consensus": "pipe_leak",   # the modal label
+          "consensus_share": 0.6,     # 3/5
+          "n_records": 5,
+          "use_corrected": True,
+        }
+
+    Set `use_corrected=False` to inspect the raw intake labels (useful
+    for diagnostics — "what did intake think?" — but not what the
+    classifier should consume).
+    """
+    from collections import Counter
+
+    if not records:
+        return None
+
+    if use_corrected:
+        labels = [r.corrected_subcategory for r in records]
+    else:
+        labels = [r.intake_subcategory for r in records]
+    labels = [l for l in labels if l]
+
+    if len(labels) < 2:
+        return None
+
+    counts = Counter(labels)
+    if len(counts) <= 1:
+        return None  # all agree
+
+    consensus, top_count = counts.most_common(1)[0]
+    return {
+        "conflict": True,
+        "labels": dict(counts),
+        "consensus": consensus,
+        "consensus_share": top_count / len(labels),
+        "n_records": len(labels),
+        "use_corrected": use_corrected,
+    }

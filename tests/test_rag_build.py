@@ -109,10 +109,25 @@ def test_metadata_carries_every_required_key():
         assert key in md, f"missing required metadata key {key!r}"
 
 
-def test_metadata_was_audit_flagged_is_false_placeholder():
-    # Issue #9 fills this in; #7's responsibility is just to allocate the field.
+def test_metadata_audit_fields_default_false_for_unaudited_record():
+    # The synthetic ticket_id "tkt_test_001" isn't in qa_audit_findings.json,
+    # so the audit lookup returns None and every audit boolean stays False.
     md = _format_metadata(_make_record())
     assert md["was_audit_flagged"] is False
+    assert md["audit_over_escalated"] is False
+    assert md["audit_reclassified"] is False
+    assert md["audit_floor_wrong"] is False
+
+
+def test_metadata_audit_fields_populated_for_known_flagged_ticket():
+    # TKT-2023-02756 was reclassified (intake roof_leak → final structural).
+    md = _format_metadata(_make_record(ticket_id="TKT-2023-02756"))
+    assert md["was_audit_flagged"] is True
+    assert md["audit_reclassified"] is True
+    # over-escalated and floor-wrong flags depend on the actual finding —
+    # we don't assert their exact values, just that they're proper booleans.
+    assert isinstance(md["audit_over_escalated"], bool)
+    assert isinstance(md["audit_floor_wrong"], bool)
 
 
 def test_metadata_drops_none_values_to_avoid_chroma_type_errors():
