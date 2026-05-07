@@ -33,24 +33,34 @@ final_project/
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Run the agent on the dev set (with labels — for self-evaluation)
+# 2. Build the RAG index over historical_records.json (one-time, ~1 min, ~$0.02)
+#    — produces a persistent chroma store at agent/rag/chroma_store/.
+#    Skip this if a store already exists; pass --force to rebuild.
+python -m agent.rag.build_index
+
+# 3. Run the agent on the dev set (with labels — for self-evaluation)
 python evaluation/run_eval.py \
     --agent agent.classify:classify \
     --eval evaluation/eval_transcripts_dev.json \
     --out predictions.json
 
-# 3. Score yourself
+# 4. Score yourself
 python evaluation/scoring.py \
     --eval evaluation/eval_transcripts_dev.json \
     --ground-truth evaluation/dev_labels.json \
     --predictions predictions.json
 
-# 4. Final test-set run (used for grading)
+# 5. Final test-set run (used for grading)
 python evaluation/run_eval.py \
     --agent agent.classify:classify \
     --eval evaluation/eval_transcripts_test.json \
     --out predictions.json
 ```
+
+The chroma store is gitignored — it's built on first run from
+[`operational/historical_records.json`](operational/historical_records.json)
+using the `text-embedding-3-small` model (configurable via `AGENT_EMBEDDING_MODEL`).
+Changing the embedding model requires a `--force` rebuild.
 
 The agent exposes a single callable, `agent.classify:classify(turns, caller_phone) -> dict`,
 returning the fields documented in [`evaluation/prediction.py`](evaluation/prediction.py).
