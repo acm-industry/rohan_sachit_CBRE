@@ -59,6 +59,29 @@ Each eval row also carries `caller_known_in_profiles: bool` — true when
 The harness forwards only `turns` and `caller_phone`; the agent looks the
 profile up itself.
 
+## Environment variables
+
+Required:
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Auth for OpenAI chat + embedding models |
+
+Optional (defaults are tuned for determinism):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AGENT_CHAT_MODEL` | `gpt-4o-mini` | Chat model for extraction / classification / risk |
+| `AGENT_CHAT_TEMPERATURE` | `0.0` | Sampling temperature (keep 0 for reproducibility) |
+| `AGENT_CHAT_SEED` | `7` | OpenAI seed parameter when supported |
+| `AGENT_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for the historical-records RAG index |
+| `AGENT_MAX_EXTRACTION_RETRIES` | `2` | Cap on the query-rewrite retry loop |
+
+Either export these in your shell or drop them in a `.env` at the repo root —
+the agent loads `.env` automatically via `python-dotenv`. Missing required
+vars surface as a `RuntimeError` from `agent.config.get_settings()` naming
+the exact variable that's unset.
+
 ## What you submit
 
 1. **Source repo** — your agent code, dependencies, README with run instructions.
