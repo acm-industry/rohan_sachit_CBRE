@@ -1,0 +1,616 @@
+{
+  "cells": {
+    "access_control": {
+      "LOW": {
+        "audit_rate": 0.059406,
+        "is_high_audit": false,
+        "n": 202,
+        "n_audit_flagged": 12
+      },
+      "MEDIUM": {
+        "audit_rate": 0.052632,
+        "is_high_audit": false,
+        "n": 95,
+        "n_audit_flagged": 5
+      }
+    },
+    "active_threat": {
+      "EMERGENCY": {
+        "audit_rate": 0.051852,
+        "is_high_audit": false,
+        "n": 270,
+        "n_audit_flagged": 14
+      },
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 1,
+        "n_audit_flagged": 1
+      }
+    },
+    "air_quality": {
+      "EMERGENCY": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 54,
+        "n_audit_flagged": 54
+      },
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 7,
+        "n_audit_flagged": 7
+      },
+      "LOW": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 1,
+        "n_audit_flagged": 1
+      },
+      "MEDIUM": {
+        "audit_rate": 0.035714,
+        "is_high_audit": false,
+        "n": 252,
+        "n_audit_flagged": 9
+      }
+    },
+    "appliance_kitchen": {
+      "LOW": {
+        "audit_rate": 0.052434,
+        "is_high_audit": false,
+        "n": 267,
+        "n_audit_flagged": 14
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 1,
+        "n_audit_flagged": 1
+      }
+    },
+    "auto_door": {
+      "LOW": {
+        "audit_rate": 0.087591,
+        "is_high_audit": false,
+        "n": 274,
+        "n_audit_flagged": 24
+      }
+    },
+    "carpet_floor": {
+      "LOW": {
+        "audit_rate": 0.056604,
+        "is_high_audit": false,
+        "n": 265,
+        "n_audit_flagged": 15
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 9,
+        "n_audit_flagged": 9
+      }
+    },
+    "controls_bms": {
+      "LOW": {
+        "audit_rate": 0.05303,
+        "is_high_audit": false,
+        "n": 264,
+        "n_audit_flagged": 14
+      }
+    },
+    "door_mechanical": {
+      "LOW": {
+        "audit_rate": 0.066202,
+        "is_high_audit": false,
+        "n": 287,
+        "n_audit_flagged": 19
+      }
+    },
+    "drainage_backup": {
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 1,
+        "n_audit_flagged": 1
+      },
+      "LOW": {
+        "audit_rate": 0.075145,
+        "is_high_audit": false,
+        "n": 173,
+        "n_audit_flagged": 13
+      },
+      "MEDIUM": {
+        "audit_rate": 0.058824,
+        "is_high_audit": false,
+        "n": 102,
+        "n_audit_flagged": 6
+      }
+    },
+    "entrapment": {
+      "EMERGENCY": {
+        "audit_rate": 0.02809,
+        "is_high_audit": false,
+        "n": 178,
+        "n_audit_flagged": 5
+      },
+      "HIGH": {
+        "audit_rate": 0.045455,
+        "is_high_audit": false,
+        "n": 88,
+        "n_audit_flagged": 4
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 4,
+        "n_audit_flagged": 4
+      }
+    },
+    "fire_smoke": {
+      "EMERGENCY": {
+        "audit_rate": 0.058824,
+        "is_high_audit": false,
+        "n": 272,
+        "n_audit_flagged": 16
+      },
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      }
+    },
+    "gas_chemical": {
+      "EMERGENCY": {
+        "audit_rate": 0.053061,
+        "is_high_audit": false,
+        "n": 245,
+        "n_audit_flagged": 13
+      },
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 2,
+        "n_audit_flagged": 2
+      },
+      "LOW": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 1,
+        "n_audit_flagged": 1
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      }
+    },
+    "glass_damage": {
+      "EMERGENCY": {
+        "audit_rate": 0.0,
+        "is_high_audit": false,
+        "n": 4,
+        "n_audit_flagged": 0
+      },
+      "HIGH": {
+        "audit_rate": 0.074766,
+        "is_high_audit": false,
+        "n": 107,
+        "n_audit_flagged": 8
+      },
+      "MEDIUM": {
+        "audit_rate": 0.054795,
+        "is_high_audit": false,
+        "n": 146,
+        "n_audit_flagged": 8
+      }
+    },
+    "infestation": {
+      "LOW": {
+        "audit_rate": 0.071823,
+        "is_high_audit": false,
+        "n": 181,
+        "n_audit_flagged": 13
+      },
+      "MEDIUM": {
+        "audit_rate": 0.05102,
+        "is_high_audit": false,
+        "n": 98,
+        "n_audit_flagged": 5
+      }
+    },
+    "landscaping": {
+      "LOW": {
+        "audit_rate": 0.030189,
+        "is_high_audit": false,
+        "n": 265,
+        "n_audit_flagged": 8
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      }
+    },
+    "lighting": {
+      "LOW": {
+        "audit_rate": 0.036496,
+        "is_high_audit": false,
+        "n": 274,
+        "n_audit_flagged": 10
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 2,
+        "n_audit_flagged": 2
+      }
+    },
+    "low_voltage_data": {
+      "LOW": {
+        "audit_rate": 0.030418,
+        "is_high_audit": false,
+        "n": 263,
+        "n_audit_flagged": 8
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 5,
+        "n_audit_flagged": 5
+      }
+    },
+    "malfunction": {
+      "EMERGENCY": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 8,
+        "n_audit_flagged": 8
+      },
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 20,
+        "n_audit_flagged": 20
+      },
+      "LOW": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 8,
+        "n_audit_flagged": 8
+      },
+      "MEDIUM": {
+        "audit_rate": 0.042857,
+        "is_high_audit": false,
+        "n": 280,
+        "n_audit_flagged": 12
+      }
+    },
+    "minor_issue": {
+      "LOW": {
+        "audit_rate": 0.026515,
+        "is_high_audit": false,
+        "n": 264,
+        "n_audit_flagged": 7
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      }
+    },
+    "no_cooling": {
+      "LOW": {
+        "audit_rate": 0.064706,
+        "is_high_audit": false,
+        "n": 170,
+        "n_audit_flagged": 11
+      },
+      "MEDIUM": {
+        "audit_rate": 0.022727,
+        "is_high_audit": false,
+        "n": 88,
+        "n_audit_flagged": 2
+      }
+    },
+    "no_heating": {
+      "LOW": {
+        "audit_rate": 0.060606,
+        "is_high_audit": false,
+        "n": 198,
+        "n_audit_flagged": 12
+      },
+      "MEDIUM": {
+        "audit_rate": 0.027778,
+        "is_high_audit": false,
+        "n": 108,
+        "n_audit_flagged": 3
+      }
+    },
+    "panel_hazard": {
+      "EMERGENCY": {
+        "audit_rate": 0.140187,
+        "is_high_audit": false,
+        "n": 214,
+        "n_audit_flagged": 30
+      },
+      "HIGH": {
+        "audit_rate": 0.121622,
+        "is_high_audit": false,
+        "n": 74,
+        "n_audit_flagged": 9
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 2,
+        "n_audit_flagged": 2
+      }
+    },
+    "parking_lighting": {
+      "LOW": {
+        "audit_rate": 0.064057,
+        "is_high_audit": false,
+        "n": 281,
+        "n_audit_flagged": 18
+      }
+    },
+    "pavement_damage": {
+      "LOW": {
+        "audit_rate": 0.067138,
+        "is_high_audit": false,
+        "n": 283,
+        "n_audit_flagged": 19
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 1,
+        "n_audit_flagged": 1
+      }
+    },
+    "pipe_leak": {
+      "EMERGENCY": {
+        "audit_rate": 0.074074,
+        "is_high_audit": false,
+        "n": 27,
+        "n_audit_flagged": 2
+      },
+      "HIGH": {
+        "audit_rate": 0.034188,
+        "is_high_audit": false,
+        "n": 117,
+        "n_audit_flagged": 4
+      },
+      "LOW": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      },
+      "MEDIUM": {
+        "audit_rate": 0.105263,
+        "is_high_audit": false,
+        "n": 114,
+        "n_audit_flagged": 12
+      }
+    },
+    "power_outage": {
+      "EMERGENCY": {
+        "audit_rate": 0.2,
+        "is_high_audit": true,
+        "n": 15,
+        "n_audit_flagged": 3
+      },
+      "HIGH": {
+        "audit_rate": 0.057851,
+        "is_high_audit": false,
+        "n": 121,
+        "n_audit_flagged": 7
+      },
+      "LOW": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 4,
+        "n_audit_flagged": 4
+      },
+      "MEDIUM": {
+        "audit_rate": 0.033333,
+        "is_high_audit": false,
+        "n": 120,
+        "n_audit_flagged": 4
+      }
+    },
+    "refrigerant": {
+      "LOW": {
+        "audit_rate": 0.0681,
+        "is_high_audit": false,
+        "n": 279,
+        "n_audit_flagged": 19
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      }
+    },
+    "restroom_fixture": {
+      "LOW": {
+        "audit_rate": 0.04797,
+        "is_high_audit": false,
+        "n": 271,
+        "n_audit_flagged": 13
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 7,
+        "n_audit_flagged": 7
+      }
+    },
+    "restroom_supplies": {
+      "LOW": {
+        "audit_rate": 0.076628,
+        "is_high_audit": false,
+        "n": 261,
+        "n_audit_flagged": 20
+      }
+    },
+    "roof_leak": {
+      "EMERGENCY": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 2,
+        "n_audit_flagged": 2
+      },
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 33,
+        "n_audit_flagged": 33
+      },
+      "MEDIUM": {
+        "audit_rate": 0.030303,
+        "is_high_audit": false,
+        "n": 264,
+        "n_audit_flagged": 8
+      }
+    },
+    "signage_fencing": {
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 3,
+        "n_audit_flagged": 3
+      },
+      "LOW": {
+        "audit_rate": 0.055336,
+        "is_high_audit": false,
+        "n": 253,
+        "n_audit_flagged": 14
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 7,
+        "n_audit_flagged": 7
+      }
+    },
+    "slip_trip": {
+      "LOW": {
+        "audit_rate": 0.096591,
+        "is_high_audit": false,
+        "n": 176,
+        "n_audit_flagged": 17
+      },
+      "MEDIUM": {
+        "audit_rate": 0.094737,
+        "is_high_audit": false,
+        "n": 95,
+        "n_audit_flagged": 9
+      }
+    },
+    "structural": {
+      "EMERGENCY": {
+        "audit_rate": 0.0,
+        "is_high_audit": false,
+        "n": 40,
+        "n_audit_flagged": 0
+      },
+      "HIGH": {
+        "audit_rate": 0.034335,
+        "is_high_audit": false,
+        "n": 233,
+        "n_audit_flagged": 8
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 7,
+        "n_audit_flagged": 7
+      }
+    },
+    "suspicious_person": {
+      "EMERGENCY": {
+        "audit_rate": 0.857143,
+        "is_high_audit": true,
+        "n": 35,
+        "n_audit_flagged": 30
+      },
+      "HIGH": {
+        "audit_rate": 0.126126,
+        "is_high_audit": false,
+        "n": 111,
+        "n_audit_flagged": 14
+      },
+      "MEDIUM": {
+        "audit_rate": 0.044304,
+        "is_high_audit": false,
+        "n": 158,
+        "n_audit_flagged": 7
+      }
+    },
+    "unauthorized_access": {
+      "EMERGENCY": {
+        "audit_rate": 0.058824,
+        "is_high_audit": false,
+        "n": 34,
+        "n_audit_flagged": 2
+      },
+      "HIGH": {
+        "audit_rate": 0.033613,
+        "is_high_audit": false,
+        "n": 238,
+        "n_audit_flagged": 8
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 4,
+        "n_audit_flagged": 4
+      }
+    },
+    "waste_odor": {
+      "EMERGENCY": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 33,
+        "n_audit_flagged": 33
+      },
+      "HIGH": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 9,
+        "n_audit_flagged": 9
+      },
+      "LOW": {
+        "audit_rate": 0.052419,
+        "is_high_audit": false,
+        "n": 248,
+        "n_audit_flagged": 13
+      },
+      "MEDIUM": {
+        "audit_rate": 1.0,
+        "is_high_audit": true,
+        "n": 1,
+        "n_audit_flagged": 1
+      }
+    }
+  },
+  "rule_version": "v1",
+  "thresholds": {
+    "high_audit_rate_pct": 15.0,
+    "low_confidence": 0.5,
+    "trap_over_escalation_rate_pct": 15.0
+  }
+}
