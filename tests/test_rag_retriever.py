@@ -34,8 +34,14 @@ from agent.rag.retriever import (  # noqa: E402
     RetrievedRecord,
     _normalize_filters,
     _reset_caches_for_tests,
+    detect_label_conflict,
     retrieve,
 )
+
+
+def _record(**md) -> RetrievedRecord:
+    """Construct a RetrievedRecord with controlled metadata."""
+    return RetrievedRecord(text="(synthetic)", metadata=md, distance=0.0)
 
 
 # ─── Deterministic embedder identical to the one used in test_rag_build ──
@@ -229,6 +235,127 @@ def test_retrieved_record_convenience_accessors(tmp_path):
     assert h.intake_subcategory == h.metadata.get("intake_subcategory")
     assert h.final_subcategory == h.metadata.get("final_subcategory")
     assert h.assigned_vendor_id == h.metadata.get("assigned_vendor_id")
+
+
+# ─── corrected_* properties (audit-aware relabel) ──────────────────────────
+
+
+def test_corrected_subcategory_unflagged_returns_intake():
+    r = _record(
+        intake_category="PLUMBING", intake_subcategory="pipe_leak",
+        final_category="PLUMBING", final_subcategory="pipe_leak",
+        intake_risk_level="MEDIUM", final_risk_level="MEDIUM",
+        was_audit_flagged=False, audit_reclassified=False,
+        audit_over_escalated=False, audit_floor_wrong=False,
+    )
+    assert r.corrected_subcategory == "pipe_leak"
+    assert r.corrected_category == "PLUMBING"
+    assert r.corrected_risk_level == "MEDIUM"
+
+
+def test_corrected_subcategory_reclassified_returns_final():
+    # The TKT-2023-02756 case: intake roof_leak was actually structural.
+    r = _record(
+        intake_category="PLUMBING", intake_subcategory="roof_leak",
+        final_category="LIFE_SAFETY", final_subcategory="structural",
+        intake_risk_level="MEDIUM", final_risk_level="HIGH",
+        was_audit_flagged=True, audit_reclassified=True,
+        audit_over_escalated=False, audit_floor_wrong=False,
+    )
+    # Subcategory + category get the corrected (final) values.
+    assert r.corrected_subcategory == "structural"
+    assert r.corrected_category == "LIFE_SAFETY"
+    # Risk level NOT corrected — the over-escalated flag isn't set; the
+    # auditor agreed with MEDIUM as the right risk band.
+    assert r.corrected_risk_level == "MEDIUM"
+
+
+def test_corrected_risk_level_over_escalated_returns_final():
+    # Intake was HIGH but auditor confirmed it should have been LOW.
+    r = _record(
+        intake_subcategory="restroom_fixture", final_subcategory="restroom_fixture",
+        intake_risk_level="HIGH", final_risk_level="LOW",
+        was_audit_flagged=True, audit_over_escalated=True,
+        audit_reclassified=False, audit_floor_wrong=False,
+    )
+    assert r.corrected_risk_level == "LOW"
+    # Subcategory wasn't reclassified, so it stays.
+    assert r.corrected_subcategory == "restroom_fixture"
+
+
+def test_corrected_falls_back_to_intake_when_final_missing():
+    # Defensive: if a flagged record has no final_* (shouldn't happen in
+    # practice), the corrected_* properties should not return None silently.
+    r = _record(
+        intake_subcategory="pipe_leak",
+        was_audit_flagged=True, audit_reclassified=True,
+    )
+    assert r.corrected_subcategory == "pipe_leak"
+
+
+def test_audit_flag_accessors_default_false():
+    r = _record(intake_subcategory="pipe_leak")
+    assert r.is_audit_flagged is False
+    assert r.was_reclassified is False
+    assert r.was_over_escalated is False
+
+
+# ─── detect_label_conflict ────────────────────────────────────────────────
+
+
+def test_detect_label_conflict_returns_none_on_unanimous():
+    records = [
+        _record(intake_subcategory="pipe_leak"),
+        _record(intake_subcategory="pipe_leak"),
+        _record(intake_subcategory="pipe_leak"),
+    ]
+    assert detect_label_conflict(records) is None
+
+
+def test_detect_label_conflict_returns_none_on_empty():
+    assert detect_label_conflict([]) is None
+
+
+def test_detect_label_conflict_returns_none_with_single_record():
+    assert detect_label_conflict([_record(intake_subcategory="pipe_leak")]) is None
+
+
+def test_detect_label_conflict_surfaces_split():
+    records = [
+        _record(intake_subcategory="pipe_leak"),
+        _record(intake_subcategory="pipe_leak"),
+        _record(intake_subcategory="pipe_leak"),
+        _record(intake_subcategory="drainage_backup"),
+        _record(intake_subcategory="drainage_backup"),
+    ]
+    out = detect_label_conflict(records)
+    assert out is not None
+    assert out["conflict"] is True
+    assert out["consensus"] == "pipe_leak"
+    assert out["consensus_share"] == 0.6
+    assert out["labels"] == {"pipe_leak": 3, "drainage_backup": 2}
+    assert out["n_records"] == 5
+    assert out["use_corrected"] is True
+
+
+def test_detect_label_conflict_uses_corrected_by_default():
+    # Two records: one unflagged (intake_subcategory == final), one with
+    # was_reclassified pointing to a different final_subcategory. With
+    # use_corrected=True the records *agree* on the corrected label
+    # (same final_subcategory); use_corrected=False sees them disagree.
+    records = [
+        _record(intake_subcategory="structural", final_subcategory="structural",
+                was_audit_flagged=False, audit_reclassified=False),
+        _record(intake_subcategory="roof_leak", final_subcategory="structural",
+                was_audit_flagged=True, audit_reclassified=True),
+    ]
+    # use_corrected=True: both → "structural" → no conflict
+    assert detect_label_conflict(records, use_corrected=True) is None
+    # use_corrected=False: roof_leak vs structural → conflict
+    raw = detect_label_conflict(records, use_corrected=False)
+    assert raw is not None
+    assert raw["use_corrected"] is False
+    assert set(raw["labels"]) == {"roof_leak", "structural"}
 
 
 # ─── Inline runner ─────────────────────────────────────────────────────────

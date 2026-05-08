@@ -47,6 +47,7 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 from langchain_core.documents import Document  # noqa: E402
 
 from agent import config  # noqa: E402
+from agent.data import audit  # noqa: E402
 from agent.rag import COLLECTION_NAME, METADATA_KEYS, STORE_DIR  # noqa: E402
 
 
@@ -92,10 +93,18 @@ def _format_document_text(record: dict) -> str:
 def _format_metadata(record: dict) -> dict:
     """Extract the metadata fields downstream nodes filter and rank by.
 
+    Joins `evaluation/qa_audit_findings.json` (issue #9) to stamp the
+    audit booleans into each row. Records without a finding default to
+    every audit flag = False; records with a finding but no specific
+    flags set (auditor reviewed and confirmed intake) likewise stay False
+    on `was_audit_flagged` — that key tracks "real problem the auditor
+    caught", not "this ticket was reviewed".
+
     Chroma metadata values must be primitives (str / int / float / bool);
     `None`s are dropped because some chromadb versions choke on them in
     where-clauses.
     """
+    finding = audit.lookup(record.get("ticket_id"))
     md: dict[str, Any] = {
         "ticket_id": record.get("ticket_id"),
         "intake_category": record.get("intake_category"),
@@ -107,9 +116,10 @@ def _format_metadata(record: dict) -> dict:
         "assigned_vendor_id": record.get("assigned_vendor_id"),
         "building_type": record.get("building_type"),
         "city": record.get("city"),
-        # Placeholder; issue #9 joins evaluation/qa_audit_findings.json
-        # to populate this on a per-ticket basis.
-        "was_audit_flagged": False,
+        "was_audit_flagged": bool(finding and finding.has_any_flag),
+        "audit_over_escalated": bool(finding and finding.was_over_escalated),
+        "audit_reclassified": bool(finding and finding.was_reclassified),
+        "audit_floor_wrong": bool(finding and finding.floor_was_wrong_at_intake),
     }
     return {k: v for k, v in md.items() if v is not None}
 

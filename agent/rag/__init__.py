@@ -21,9 +21,15 @@ STORE_DIR: Path = Path(__file__).resolve().parent / "chroma_store"
 COLLECTION_NAME: str = "historical_records"
 
 # Schema of every chroma metadata row. Listed here so the builder, the
-# retriever, and any analysis script all agree. `was_audit_flagged` is a
-# placeholder: it lands as `False` in this issue and gets joined against
-# `evaluation/qa_audit_findings.json` in issue #9.
+# retriever, and any analysis script all agree.
+#
+# Audit fields are populated at build time via a join against
+# `evaluation/qa_audit_findings.json` (issue #9):
+# - `was_audit_flagged` is True iff the ticket has at least one specific
+#   audit flag set; not just "the auditor reviewed this ticket".
+# - The three sub-flags are denormalized so the classifier can ask
+#   "which axis was the intake wrong about" and the retriever can expose
+#   `corrected_*` properties (final_* on flagged records, intake_* otherwise).
 METADATA_KEYS: tuple[str, ...] = (
     "ticket_id",
     "intake_category",
@@ -36,4 +42,7 @@ METADATA_KEYS: tuple[str, ...] = (
     "building_type",
     "city",
     "was_audit_flagged",
+    "audit_over_escalated",
+    "audit_reclassified",
+    "audit_floor_wrong",
 )
