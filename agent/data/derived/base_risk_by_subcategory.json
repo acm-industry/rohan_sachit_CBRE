@@ -1,0 +1,470 @@
+{
+  "access_control": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.676768,
+      "MEDIUM": 0.323232
+    },
+    "intake_agreement_rate": 0.996633,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.003367,
+    "modal_risk": "LOW",
+    "n": 297
+  },
+  "active_threat": {
+    "distribution": {
+      "EMERGENCY": 1.0,
+      "HIGH": 0.0,
+      "LOW": 0.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.985401,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.014599,
+    "modal_risk": "EMERGENCY",
+    "n": 274
+  },
+  "air_quality": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.022293,
+      "MEDIUM": 0.977707
+    },
+    "intake_agreement_rate": 0.802548,
+    "intake_over_escalation_rate": 0.194268,
+    "intake_under_escalation_rate": 0.003185,
+    "modal_risk": "MEDIUM",
+    "n": 314
+  },
+  "appliance_kitchen": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.996269,
+    "intake_over_escalation_rate": 0.003731,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 268
+  },
+  "auto_door": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 1.0,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 274
+  },
+  "carpet_floor": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.967153,
+    "intake_over_escalation_rate": 0.032847,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 274
+  },
+  "controls_bms": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 1.0,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 264
+  },
+  "door_mechanical": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 1.0,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 287
+  },
+  "drainage_backup": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.619565,
+      "MEDIUM": 0.380435
+    },
+    "intake_agreement_rate": 0.981884,
+    "intake_over_escalation_rate": 0.007246,
+    "intake_under_escalation_rate": 0.01087,
+    "modal_risk": "LOW",
+    "n": 276
+  },
+  "entrapment": {
+    "distribution": {
+      "EMERGENCY": 0.67037,
+      "HIGH": 0.32963,
+      "LOW": 0.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.981481,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.018519,
+    "modal_risk": "EMERGENCY",
+    "n": 270
+  },
+  "fire_smoke": {
+    "distribution": {
+      "EMERGENCY": 1.0,
+      "HIGH": 0.0,
+      "LOW": 0.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.989091,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.010909,
+    "modal_risk": "EMERGENCY",
+    "n": 275
+  },
+  "gas_chemical": {
+    "distribution": {
+      "EMERGENCY": 1.0,
+      "HIGH": 0.0,
+      "LOW": 0.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.976096,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.023904,
+    "modal_risk": "EMERGENCY",
+    "n": 251
+  },
+  "glass_damage": {
+    "distribution": {
+      "EMERGENCY": 0.015564,
+      "HIGH": 0.40856,
+      "LOW": 0.0,
+      "MEDIUM": 0.575875
+    },
+    "intake_agreement_rate": 0.992218,
+    "intake_over_escalation_rate": 0.007782,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "MEDIUM",
+    "n": 257
+  },
+  "infestation": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.634409,
+      "MEDIUM": 0.365591
+    },
+    "intake_agreement_rate": 0.985663,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.014337,
+    "modal_risk": "LOW",
+    "n": 279
+  },
+  "landscaping": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.988806,
+    "intake_over_escalation_rate": 0.011194,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 268
+  },
+  "lighting": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.992754,
+    "intake_over_escalation_rate": 0.007246,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 276
+  },
+  "low_voltage_data": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.981343,
+    "intake_over_escalation_rate": 0.018657,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 268
+  },
+  "malfunction": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.009494,
+      "MEDIUM": 0.990506
+    },
+    "intake_agreement_rate": 0.886076,
+    "intake_over_escalation_rate": 0.088608,
+    "intake_under_escalation_rate": 0.025316,
+    "modal_risk": "MEDIUM",
+    "n": 316
+  },
+  "minor_issue": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.988764,
+    "intake_over_escalation_rate": 0.011236,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 267
+  },
+  "no_cooling": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.655039,
+      "MEDIUM": 0.344961
+    },
+    "intake_agreement_rate": 0.996124,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.003876,
+    "modal_risk": "LOW",
+    "n": 258
+  },
+  "no_heating": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.643791,
+      "MEDIUM": 0.356209
+    },
+    "intake_agreement_rate": 0.996732,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.003268,
+    "modal_risk": "LOW",
+    "n": 306
+  },
+  "panel_hazard": {
+    "distribution": {
+      "EMERGENCY": 0.7,
+      "HIGH": 0.248276,
+      "LOW": 0.0,
+      "MEDIUM": 0.051724
+    },
+    "intake_agreement_rate": 0.92069,
+    "intake_over_escalation_rate": 0.058621,
+    "intake_under_escalation_rate": 0.02069,
+    "modal_risk": "EMERGENCY",
+    "n": 290
+  },
+  "parking_lighting": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 1.0,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 281
+  },
+  "pavement_damage": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.996479,
+    "intake_over_escalation_rate": 0.003521,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 284
+  },
+  "pipe_leak": {
+    "distribution": {
+      "EMERGENCY": 0.10728,
+      "HIGH": 0.45977,
+      "LOW": 0.0,
+      "MEDIUM": 0.43295
+    },
+    "intake_agreement_rate": 0.969349,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.030651,
+    "modal_risk": "HIGH",
+    "n": 261
+  },
+  "power_outage": {
+    "distribution": {
+      "EMERGENCY": 0.053846,
+      "HIGH": 0.476923,
+      "LOW": 0.0,
+      "MEDIUM": 0.469231
+    },
+    "intake_agreement_rate": 0.976923,
+    "intake_over_escalation_rate": 0.003846,
+    "intake_under_escalation_rate": 0.019231,
+    "modal_risk": "HIGH",
+    "n": 260
+  },
+  "refrigerant": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.989362,
+    "intake_over_escalation_rate": 0.010638,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 282
+  },
+  "restroom_fixture": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.97482,
+    "intake_over_escalation_rate": 0.02518,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 278
+  },
+  "restroom_supplies": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 1.0,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 261
+  },
+  "roof_leak": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.013378,
+      "MEDIUM": 0.986622
+    },
+    "intake_agreement_rate": 0.882943,
+    "intake_over_escalation_rate": 0.117057,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "MEDIUM",
+    "n": 299
+  },
+  "signage_fencing": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.961977,
+    "intake_over_escalation_rate": 0.038023,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 263
+  },
+  "slip_trip": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 0.656827,
+      "MEDIUM": 0.343173
+    },
+    "intake_agreement_rate": 0.98524,
+    "intake_over_escalation_rate": 0.01107,
+    "intake_under_escalation_rate": 0.00369,
+    "modal_risk": "LOW",
+    "n": 271
+  },
+  "structural": {
+    "distribution": {
+      "EMERGENCY": 0.142857,
+      "HIGH": 0.857143,
+      "LOW": 0.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.975,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.025,
+    "modal_risk": "HIGH",
+    "n": 280
+  },
+  "suspicious_person": {
+    "distribution": {
+      "EMERGENCY": 0.016447,
+      "HIGH": 0.345395,
+      "LOW": 0.003289,
+      "MEDIUM": 0.634868
+    },
+    "intake_agreement_rate": 0.871711,
+    "intake_over_escalation_rate": 0.128289,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "MEDIUM",
+    "n": 304
+  },
+  "unauthorized_access": {
+    "distribution": {
+      "EMERGENCY": 0.126812,
+      "HIGH": 0.873188,
+      "LOW": 0.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.981884,
+    "intake_over_escalation_rate": 0.0,
+    "intake_under_escalation_rate": 0.018116,
+    "modal_risk": "HIGH",
+    "n": 276
+  },
+  "waste_odor": {
+    "distribution": {
+      "EMERGENCY": 0.0,
+      "HIGH": 0.0,
+      "LOW": 1.0,
+      "MEDIUM": 0.0
+    },
+    "intake_agreement_rate": 0.852234,
+    "intake_over_escalation_rate": 0.147766,
+    "intake_under_escalation_rate": 0.0,
+    "modal_risk": "LOW",
+    "n": 291
+  }
+}
