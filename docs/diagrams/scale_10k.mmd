@@ -1,0 +1,17 @@
+%% Scale evolution at 10K calls/day.
+%% Source: design_doc.md "Scale thought-experiment" section.
+flowchart LR
+    subgraph Current["Today (laptop, ~200/hour)"]
+        S1[in-memory checkpointer<br/>InMemorySaver]
+        C1[serial calls]
+        L1[local chroma store]
+        Q1[stdin/stdout reviewer]
+    end
+    subgraph At10K["10K calls/day (~7/min)"]
+        S2[(Postgres checkpointer<br/>thread_id = call-XXX)]
+        C2[k=8 async workers<br/>per pod, autoscaled]
+        L2[(Hosted vector DB<br/>+ category-shard collections)]
+        Q2[reviewer queue<br/>SLA-driven priority]
+        M2[Sampling: 10% trainer logs<br/>shipped to retention bucket]
+    end
+    Current -. evolve .-> At10K
