@@ -200,13 +200,7 @@ def extract(
     prompt = build_prompt(turns, profile)
 
     if llm is None:
-        from langchain_openai import ChatOpenAI
-
-        s = config.get_settings()
-        kwargs = {"model": s.chat_model, "temperature": s.chat_temperature}
-        if s.chat_seed is not None:
-            kwargs["seed"] = s.chat_seed
-        llm = ChatOpenAI(**kwargs)
+        llm = config.build_chat_llm()
 
     structured = llm.with_structured_output(Extraction)
     return structured.invoke(prompt)
