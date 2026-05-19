@@ -332,13 +332,7 @@ DEFAULT_K = 8
 
 
 def _build_llm() -> Any:
-    from langchain_openai import ChatOpenAI
-
-    s = config.get_settings()
-    kwargs = {"model": s.chat_model, "temperature": s.chat_temperature}
-    if s.chat_seed is not None:
-        kwargs["seed"] = s.chat_seed
-    return ChatOpenAI(**kwargs)
+    return config.build_chat_llm()
 
 
 def classify(

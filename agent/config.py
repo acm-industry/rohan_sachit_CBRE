@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
@@ -76,3 +76,21 @@ def get_settings(*, validate: bool = True) -> Settings:
     if validate:
         settings.validate_or_raise()
     return settings
+
+
+def build_chat_llm(settings: Optional[Settings] = None) -> Any:
+    """Construct the canonical ChatOpenAI instance for every LLM call site.
+
+    Funnelling every node through one builder is the determinism contract
+    from the brief: temperature, seed, and model name are decided here and
+    nowhere else. Adding a new LLM-backed node? Call this — don't
+    re-implement the `ChatOpenAI(...)` ceremony, or the determinism test
+    in `tests/test_determinism.py` will fail.
+    """
+    from langchain_openai import ChatOpenAI
+
+    s = settings or get_settings()
+    kwargs: dict = {"model": s.chat_model, "temperature": s.chat_temperature}
+    if s.chat_seed is not None:
+        kwargs["seed"] = s.chat_seed
+    return ChatOpenAI(**kwargs)

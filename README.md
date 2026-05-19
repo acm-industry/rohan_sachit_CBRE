@@ -92,6 +92,30 @@ the agent loads `.env` automatically via `python-dotenv`. Missing required
 vars surface as a `RuntimeError` from `agent.config.get_settings()` naming
 the exact variable that's unset.
 
+## Determinism
+
+Per the brief: `classify(turns, phone)` is reproducible for identical input
+modulo provider non-determinism. The contract is enforced in three places:
+
+- **One LLM constructor.** Every node builds its chat model through
+  `agent.config.build_chat_llm()`, which pins `temperature=0`, the
+  `AGENT_CHAT_MODEL` string, and OpenAI's `seed` parameter
+  (`AGENT_CHAT_SEED`, default 7). `tests/test_determinism.py` lint-fails
+  the build if a bare `ChatOpenAI(...)` constructor shows up anywhere else
+  under `agent/`.
+- **Sealed file reads.** Source files under `agent/` only read from
+  `agent/`, `operational/`, and `evaluation/`. The same test asserts this
+  statically against every `Path(...)` constant in the module tree.
+- **First-run build, not committed.** The chroma store is gitignored and
+  built on first invocation (`python -m agent.rag.build_index`) at a
+  one-time cost of roughly 1–3 minutes and ~$0.02 in embedding fees.
+  Subsequent runs reuse the on-disk store. Changing
+  `AGENT_EMBEDDING_MODEL` requires `--force` to rebuild.
+
+OpenAI's `seed` is best-effort — the API documents occasional drift even
+with `temperature=0`. We accept that as the documented provider noise
+floor.
+
 ## What you submit
 
 1. **Source repo** — your agent code, dependencies, README with run instructions.
