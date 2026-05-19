@@ -1,0 +1,152 @@
+{
+  "risk": {
+    "total_errors": 32,
+    "accuracy": 0.84,
+    "over_predictions": {
+      "HIGH\u2192EMERGENCY": 6,
+      "MEDIUM\u2192HIGH": 6,
+      "MEDIUM\u2192EMERGENCY": 4,
+      "LOW\u2192MEDIUM": 3
+    },
+    "under_predictions": {
+      "MEDIUM\u2192LOW": 6,
+      "HIGH\u2192MEDIUM": 4,
+      "HIGH\u2192LOW": 3
+    }
+  },
+  "hitl": {
+    "tp": 39,
+    "fp": 16,
+    "fn": 20,
+    "tn": 125,
+    "precision": 0.7091,
+    "recall": 0.661,
+    "f1": 0.6842,
+    "fp_by_subcategory": {
+      "air_quality": 6,
+      "pipe_leak": 6,
+      "power_outage": 4
+    },
+    "fn_by_subcategory": {
+      "suspicious_person": 5,
+      "waste_odor": 4,
+      "malfunction": 4,
+      "slip_trip": 2,
+      "roof_leak": 2,
+      "no_heating": 1,
+      "signage_fencing": 1,
+      "refrigerant": 1
+    }
+  },
+  "location": {
+    "total_errors": 24,
+    "accuracy": 0.88,
+    "building_misses": 22,
+    "address_misses": 22,
+    "floor_misses": 2,
+    "pattern": "building+address co-occur (registry lookup fails)"
+  },
+  "vendor": {
+    "total_errors": 31,
+    "accuracy": 0.845,
+    "emergency_no_dispatch": 13,
+    "wrong_vendor": 7,
+    "unroutable_not_escalated": 4,
+    "no_dispatch_when_expected": 20
+  },
+  "auto_resolution": {
+    "eligible": 85,
+    "hits": 73,
+    "rate": 0.8588,
+    "misses": [
+      {
+        "tid": "EVAL-0065",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "auto_door",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0632",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "minor_issue",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0586",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "minor_issue",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0944",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "auto_door",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0064",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "pavement_damage",
+        "case_type": "normal"
+      },
+      {
+        "tid": "EVAL-0805",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "restroom_supplies",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0395",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "auto_door",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0467",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "auto_door",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0025",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "door_mechanical",
+        "case_type": "normal"
+      },
+      {
+        "tid": "EVAL-0713",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "door_mechanical",
+        "case_type": "normal"
+      },
+      {
+        "tid": "EVAL-0099",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "minor_issue",
+        "case_type": "hard"
+      },
+      {
+        "tid": "EVAL-0127",
+        "needs_review": false,
+        "needs_clarif": true,
+        "subcategory": "minor_issue",
+        "case_type": "hard"
+      }
+    ],
+    "miss_by_cause": {
+      "clarification_over_trigger": 12,
+      "hitl_over_trigger": 0
+    }
+  }
+}
