@@ -1,0 +1,15 @@
+%% Agent graph — node sequence inside agent.classify:classify().
+%% Sources: agent/nodes/*.py and agent/classify.py (issues #1, #16, #19–#24).
+flowchart TD
+    Start([turns + caller_phone]) --> Extract[extract<br/>structured fields + confidence]
+    Extract --> Classify[classify<br/>category, subcategory, confidence,<br/>reasoning  — RAG over historicals]
+    Classify --> Location[reconcile_location<br/>transcript &gt; registry &gt; profile]
+    Location --> Risk[assign_risk<br/>base risk + modifier weights]
+    Risk --> Validate{validator gate<br/>should_pause?}
+    Validate -- pause --> NHR[needs_human_review = true<br/>dispatched_vendor_id = null<br/>maybe 911 if life-safety + EMERGENCY]
+    Validate -- continue --> Vendor[vendor_select<br/>qualify -&gt; SLA cap -&gt; tie-break]
+    Vendor --> Clarify[clarification check<br/>3 signal disjunction]
+    NHR --> Clarify
+    Clarify --> Summary[call_summary<br/>2-3 sentence operator narrative]
+    Summary --> TrainerLog[assemble_trainer_log<br/>ai_prediction + override + final]
+    TrainerLog --> Out([Prediction dict])

@@ -154,6 +154,10 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
             risk_level=risk_level,
             classification_confidence=min_confidence,
             fallback_invoked=fallback_invoked,
+            # A 911 dispatch additionally requires a real extracted hazard
+            # cue — passing these is what lets the validator distinguish a
+            # genuine life-safety call from a misclassification.
+            extracted_urgency_cues=extraction.urgency_cues,
         )
     except Exception as e:
         logger.warning("validator failed: %s", e)
@@ -199,6 +203,13 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
             needs_clarification=False, question=None, reasons=()
         )
 
+    # The clarify node detects in-transcript ambiguity; the location node
+    # independently flags an out-of-range floor (a floor we can prove is
+    # impossible). Either one means we must ask before acting.
+    need_clarification = (
+        clarification.needs_clarification or location.needs_clarification
+    )
+
     # ── Step 8: Summary ──────────────────────────────────────────────
     unroutable = vendor.vendor_id is None and validator_result.needs_human_review
     summary = generate_summary(
@@ -222,7 +233,7 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
         dispatched_vendor_id=vendor.vendor_id,
         dispatched_emergency_services=validator_result.dispatched_emergency_services,
         needs_human_review=validator_result.needs_human_review,
-        needs_clarification=clarification.needs_clarification,
+        needs_clarification=need_clarification,
         confidence_category=confidence_cat,
         confidence_subcategory=confidence_sub,
         validator_reasons=list(validator_result.reasons),
@@ -243,7 +254,7 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
         "subcategory": subcategory,
         "risk_level": risk_level,
         "needs_human_review": validator_result.needs_human_review,
-        "needs_clarification": clarification.needs_clarification,
+        "needs_clarification": need_clarification,
         "building_name": location.building_name,
         "address": location.address,
         "floor": location.floor,

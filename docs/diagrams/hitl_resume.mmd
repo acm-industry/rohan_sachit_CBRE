@@ -1,0 +1,29 @@
+%% HITL pause/resume cycle around the validator gate.
+%% Sources: agent/nodes/validator.py + agent/data/hitl.py + agent/classify.py.
+sequenceDiagram
+    autonumber
+    participant H as Harness
+    participant G as LangGraph orchestrator
+    participant V as validator gate
+    participant R as Human reviewer
+    participant T as TrainerLog
+
+    H->>G: classify(turns, caller_phone)
+    G->>G: extract / classify / risk
+    G->>V: should_pause(sub, risk, conf, fallback)?
+    alt pause
+        V-->>G: True, reasons[]
+        G-->>R: interrupt() with payload<br/>(AI prediction + reasons + retrieved tickets)
+        alt approve
+            R-->>G: Command(resume={"action":"approve"})
+            Note over G: ai_prediction copied to final_decision
+        else override
+            R-->>G: Command(resume={"action":"override", ...fields})
+            Note over G: override fields replace category /<br/>subcategory / risk / vendor as applicable
+        end
+    else auto-resolve
+        V-->>G: False, ["auto_resolve:no_flags_fired"]
+        Note over G: ai_prediction copied to final_decision
+    end
+    G->>T: assemble_trainer_log(ai_prediction, override, final)
+    G-->>H: Prediction dict
