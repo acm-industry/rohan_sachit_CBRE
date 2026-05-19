@@ -72,6 +72,27 @@ def test_qualify_lighting_returns_facilities():
     assert all(v.vendor_type == "facilities" for v in results)
 
 
+def test_qualify_loose_path_actually_contributes_a_vendor():
+    """Isolate the loose vendor_type path: prove qualify() includes at
+    least one vendor that matched ONLY via the derived map (its
+    `specialties` does NOT list the subcategory). `refrigerant` → hvac
+    has exactly such a vendor in the real catalog, so a regression that
+    ignored the derived map would drop it and fail here."""
+    _reset_caches_for_tests()
+    sub = "refrigerant"
+    mapping = json.loads(_MAP_PATH.read_text())
+    mapped_types = set(mapping[sub])
+    results = qualify(subcategory=sub)
+    loose_only = [
+        v for v in results
+        if sub not in v.specialties and v.vendor_type in mapped_types
+    ]
+    assert loose_only, (
+        "no vendor qualified purely via the derived vendor_type map for "
+        f"{sub!r} — the loose path is not being consulted"
+    )
+
+
 def test_known_mappings_spot_check():
     """Spot-check a few well-known mappings."""
     mapping = json.loads(_MAP_PATH.read_text())
