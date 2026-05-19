@@ -98,3 +98,4 @@ Output is deterministic modulo the documented LLM-provider noise floor
 | date (UTC) | git SHA | composite | false_911 | notes |
 |------------|---------|-----------|-----------|-------|
 | 2026-05-19T05:15:15Z | `33fc3bc` | 87.95 | 0 | baseline — fixed pipeline (issues #16/#19/#20/#21 + orchestrator) |
+| 2026-05-19T (run b)  | `7511166` | 88.30 | 0 | issue #63/#64 — trap-cascade HITL rule, `cascade_excludes=[waste_odor]`. hitl_f1 68.42 → 71.94 (+3.52), auto_resolution 85.88 (unchanged). Predictions: `eval_runs/dev_issue63.json`. |
