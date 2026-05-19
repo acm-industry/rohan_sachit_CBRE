@@ -3,15 +3,27 @@
 `classify(turns, caller_phone) -> dict` is the contract consumed by
 `evaluation/run_eval.py`. It chains all nodes in sequence:
 
-  Extract → Classify → Risk → Validate → Location → Vendor → Clarify → Summary → TrainerLog
+  Extract → Classify → Location → Risk → Validate → Vendor → Clarify → Summary → TrainerLog
 
-Each node is fault-isolated: if an LLM-backed node raises, the pipeline
-falls back to safe defaults (needs_human_review=True, no 911 dispatch)
-and still returns a schema-valid prediction dict.
+Each node is fault-isolated:
+
+- Extract / Classify / Risk are load-bearing — if they raise, the whole
+  call falls back to a schema-valid "escalate to human" prediction via
+  `_safe_fallback()` (needs_human_review=True, no 911 dispatch).
+- Location / Vendor / Clarification soft-degrade — if they raise, the
+  pipeline continues with safe defaults for that node and a logged
+  warning, because their downstream consumers (summary, trainer log)
+  can handle None / empty values.
+- Vendor selection returning `VendorSelection(vendor_id=None, ...)` is
+  the "unroutable" path: the validator's `needs_human_review` is
+  promoted to True with a `vendor_escalation` reason so the scorer's
+  unroutable-case rule (dispatched=None AND needs_human_review=True)
+  is satisfied. The summary node frames the escalation explicitly.
 """
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
 from agent.data import profiles
@@ -38,8 +50,12 @@ def _flatten(turns: List[dict]) -> str:
 def _safe_fallback(turns: List[dict], error: str) -> Dict[str, Any]:
     """Return a safe prediction on pipeline failure — avoids false-911."""
     full_transcript = _flatten(turns)
+    # (ELEVATOR, minor_issue) is the only minor_issue pair in the canonical
+    # taxonomy. modal_risk in the derived table is LOW; we hold to MEDIUM
+    # here because the fallback always escalates and "I don't know" should
+    # not present as LOW to the reviewer.
     base = {
-        "category": "OTHER",
+        "category": "ELEVATOR",
         "subcategory": "minor_issue",
         "risk_level": "MEDIUM",
         "needs_human_review": True,
@@ -130,10 +146,8 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     is_emergency = risk_level == "EMERGENCY"
 
     # ── Step 5: Validator gate ───────────────────────────────────────
-    fallback_invoked = (
-        classification.reasoning is not None
-        and "fallback" in classification.reasoning.lower()
-    )
+    # H2: read the structured flag instead of substring-matching reasoning.
+    fallback_invoked = classification.is_fallback
     try:
         validator_result = validate(
             subcategory=subcategory,
@@ -162,6 +176,17 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     except Exception as e:
         logger.warning("vendor selection failed: %s", e)
         vendor = VendorSelection(vendor_id=None, vendor_name=None, reason=f"error:{e}")
+
+    # B2: no qualified vendor → escalate. The scorer's unroutable-case rule
+    # (dispatched in (None, "") AND pr_h) requires both halves; without this
+    # promotion, low/medium routine calls with no vendor match would score
+    # wrong on vendor (10%), HITL-F1 (15%), and auto-resolution (10%).
+    if vendor.vendor_id is None and not validator_result.needs_human_review:
+        validator_result = replace(
+            validator_result,
+            needs_human_review=True,
+            reasons=[*validator_result.reasons, "vendor_escalation:no_qualified_vendor"],
+        )
 
     # ── Step 7: Clarification ────────────────────────────────────────
     try:
@@ -202,7 +227,7 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
         confidence_subcategory=confidence_sub,
         validator_reasons=list(validator_result.reasons),
         risk_reasons=list(risk.reasons),
-        retrieved_record_ids=[],
+        retrieved_record_ids=list(classification.retrieved_record_ids),
     )
 
     trainer_log = assemble_trainer_log(

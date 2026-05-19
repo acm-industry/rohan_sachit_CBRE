@@ -106,6 +106,19 @@ class Classification(BaseModel):
         description="1-2 sentence justification — what in the caller's complaint or "
         "the retrieved tickets drove this label. Captured into trainer_log."
     )
+    is_fallback: bool = Field(
+        default=False,
+        description="Internal flag — True only when the classifier had to use the "
+        "category-only fallback path. The validator gate reads this directly "
+        "instead of substring-matching the reasoning string.",
+    )
+    retrieved_record_ids: List[str] = Field(
+        default_factory=list,
+        description="Internal field — ticket IDs of the historical records the "
+        "classifier retrieved. Populated by `classify()`, never by the LLM; "
+        "consumed by trainer_log so the fine-tune corpus can re-anchor to "
+        "the records that drove each prediction.",
+    )
 
     @field_validator("reasoning")
     @classmethod
@@ -377,36 +390,42 @@ def classify(
     prompt = build_prompt(extraction, records)
     structured = llm.with_structured_output(Classification)
 
+    result: Classification
     try:
-        return structured.invoke(prompt)
+        result = structured.invoke(prompt)
     except ValidationError as first_err:
         logger.warning(
             "classifier first-pass validation failed (%s); retrying with "
             "explicit pair enumeration",
             first_err,
         )
-
-    # Retry: tell the LLM exactly which (category, subcategory) pairs are valid.
-    pair_block = "\n".join(
-        f"  ({cat!r}, {sub!r})"
-        for cat, sub in taxonomy.all_pairs()
-    )
-    retry_prompt = (
-        prompt
-        + "\n\n# RETRY GUIDANCE\nYour previous answer used a (category, subcategory) "
-        "pair that doesn't exist in the taxonomy. The complete list of valid pairs is:\n"
-        + pair_block
-        + "\n\nPick exactly one of these pairs.\n"
-    )
-    try:
-        return structured.invoke(retry_prompt)
-    except ValidationError as second_err:
-        logger.error(
-            "classifier retry validation also failed (%s); falling back "
-            "to category-only via retrieval consensus",
-            second_err,
+        # Retry: tell the LLM exactly which (category, subcategory) pairs are valid.
+        pair_block = "\n".join(
+            f"  ({cat!r}, {sub!r})"
+            for cat, sub in taxonomy.all_pairs()
         )
-        return _category_only_fallback(records)
+        retry_prompt = (
+            prompt
+            + "\n\n# RETRY GUIDANCE\nYour previous answer used a (category, subcategory) "
+            "pair that doesn't exist in the taxonomy. The complete list of valid pairs is:\n"
+            + pair_block
+            + "\n\nPick exactly one of these pairs.\n"
+        )
+        try:
+            result = structured.invoke(retry_prompt)
+        except ValidationError as second_err:
+            logger.error(
+                "classifier retry validation also failed (%s); falling back "
+                "to category-only via retrieval consensus",
+                second_err,
+            )
+            result = _category_only_fallback(records)
+
+    # Plumb retrieval provenance through to trainer_log (issue #29 §8.3).
+    # Done after the LLM call so the model can't pollute the field — the
+    # default `[]` it would emit gets overwritten with the real IDs.
+    result.retrieved_record_ids = [r.ticket_id for r in records if r.ticket_id]
+    return result
 
 
 def _category_only_fallback(records: List[RetrievedRecord]) -> Classification:
@@ -433,4 +452,5 @@ def _category_only_fallback(records: List[RetrievedRecord]) -> Classification:
         confidence_category=0.2,
         confidence_subcategory=0.1,
         reasoning="(fallback: classifier retries exhausted; category from retrieval consensus, subcategory arbitrary — escalate to human reviewer)",
+        is_fallback=True,
     )
