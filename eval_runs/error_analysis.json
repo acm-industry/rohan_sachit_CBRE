@@ -1,4 +1,56 @@
 {
+  "subcategory": {
+    "total_errors": 4,
+    "accuracy": 0.98,
+    "worst_pairs": [
+      {
+        "true": "power_outage",
+        "predicted": "lighting",
+        "count": 1
+      },
+      {
+        "true": "refrigerant",
+        "predicted": "no_cooling",
+        "count": 1
+      },
+      {
+        "true": "restroom_fixture",
+        "predicted": "drainage_backup",
+        "count": 1
+      },
+      {
+        "true": "minor_issue",
+        "predicted": "malfunction",
+        "count": 1
+      }
+    ],
+    "error_rate_by_true_subcategory": [
+      {
+        "true": "restroom_fixture",
+        "errors": 1,
+        "n": 5,
+        "error_rate": 0.2
+      },
+      {
+        "true": "power_outage",
+        "errors": 1,
+        "n": 6,
+        "error_rate": 0.167
+      },
+      {
+        "true": "refrigerant",
+        "errors": 1,
+        "n": 7,
+        "error_rate": 0.143
+      },
+      {
+        "true": "minor_issue",
+        "errors": 1,
+        "n": 8,
+        "error_rate": 0.125
+      }
+    ]
+  },
   "risk": {
     "total_errors": 32,
     "accuracy": 0.84,
@@ -49,10 +101,13 @@
   "vendor": {
     "total_errors": 31,
     "accuracy": 0.845,
-    "emergency_no_dispatch": 13,
-    "wrong_vendor": 7,
-    "unroutable_not_escalated": 4,
-    "no_dispatch_when_expected": 20
+    "failure_buckets": {
+      "emergency: all acceptable at_capacity (AC-mandated unroutable, #21/#67)": 13,
+      "escalated though a vendor was acceptable": 7,
+      "city miss": 6,
+      "unroutable not escalated": 4,
+      "specialty miss": 1
+    }
   },
   "auto_resolution": {
     "eligible": 85,

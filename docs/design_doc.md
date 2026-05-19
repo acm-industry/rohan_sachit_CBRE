@@ -1,8 +1,9 @@
 # Design Document — CBRE HITL Call-Intake Agent
 
-> **Status:** First draft (issue #29). Two sections — confusion matrix
-> (§9) and final composite score (§10.1) — are placeholders until
-> issues #25 / #26 land. Everything else describes shipped code.
+> **Status:** Draft (issue #29). §9 (error analysis) is now populated
+> from the committed dev baseline (issue #25). The final composite-score
+> table in §10.1 remains pending the post-iteration test run (#26 → #30).
+> Everything else describes shipped code.
 
 ## Table of contents
 
@@ -14,7 +15,7 @@
 6. [Vendor selection](#6-vendor-selection)
 7. [Clarification policy](#7-clarification-policy)
 8. [Trainer-log spec](#8-trainer-log-spec)
-9. [Error analysis (placeholder — pending #25)](#9-error-analysis-placeholder--pending-25)
+9. [Error analysis](#9-error-analysis)
 10. [Scale thought-experiment](#10-scale-thought-experiment)
 11. [Rubric traceability](#11-rubric-traceability)
 
@@ -548,21 +549,88 @@ joins needed at training time, every row replayable in isolation.
 
 ---
 
-## 9. Error analysis (placeholder — pending #25)
+## 9. Error analysis
 
-This section is the home for issue #25's outputs:
+Source: dev baseline `eval_runs/dev_baseline.json` (composite **87.95**,
+200 labelled calls). Reproduce via `notebooks/error_analysis.ipynb` or
+`python scripts/error_analysis.py`; the committed snapshot is
+`eval_runs/error_analysis.json`. The analysis mirrors
+`evaluation/scoring.py`'s correctness criteria, so every count below
+reconciles with the composite axes.
 
-- **Subcategory confusion matrix** (top-15 worst pairs).
-- **HITL confusion matrix** (TP/FP/FN/TN vs. `true_needs_human_review`).
-- **Location-field mismatch breakdown** (which of building / address /
-  floor failed, and which case_types they cluster in).
-- **Vendor-match failure breakdown** (specialty / city / SLA /
-  availability misses).
-- **Top 5 actionable findings** filed as follow-up issues.
+### 9.1 Subcategory confusion
 
-The notebook lives at `notebooks/error_analysis.ipynb` (issue #25);
-findings will be summarised here once the dev-set run lands (issues
-#24 → #25 → #26 → #29).
+Only **4 / 200** subcategory misses (subcategory axis = 98%, the
+strongest scored axis — retrieval + classification are not the
+bottleneck). Worst (true → predicted) pairs are all singletons:
+`power_outage→lighting`, `refrigerant→no_cooling`,
+`restroom_fixture→drainage_backup`, `minor_issue→malfunction`. No
+systematic class confusion; not a priority lever.
+
+### 9.2 HITL confusion matrix
+
+| | gt review | gt no-review |
+|--|-----------|--------------|
+| **pred review** | TP = 39 | FP = 16 |
+| **pred no-review** | FN = 20 | TN = 125 |
+
+precision = 0.709 · recall = 0.661 · **F1 = 0.684**. At **15% weight and
+the lowest axis, this is the single biggest point lever.** FP cluster on
+`air_quality`/`pipe_leak`/`power_outage` (over-flagged at MEDIUM); FN
+cluster on trap-prone subcategories (`suspicious_person`, `waste_odor`,
+`malfunction`, …) at LOW/MEDIUM. → **#63** (recall) and **#64**
+(precision), co-tuned.
+
+### 9.3 Location-field mismatch
+
+All-three-correct **176 / 200 (88%)**. `building_name` and `address`
+each fail on 22 rows (co-occurring — same root cause), `floor` only 2.
+The dominant pattern is calls with no transcript-stated building and no
+*usable* profile: the issue #19 active/not-stale gate correctly drops
+stale profiles, trading field recall for correctness. → **#65** (recover
+building/address via a low-confidence fallback without re-trusting stale
+profiles).
+
+### 9.4 Vendor-match failure breakdown
+
+Vendor accuracy **169 / 200 (84.5%)**, bucketed by first violated
+constraint:
+
+| bucket | count | nature |
+|--------|-------|--------|
+| emergency: all acceptable vendors `at_capacity` → unroutable | 13 | **AC-mandated (#21)** — policy decision, not a bug |
+| escalated though a vendor was acceptable | 7 | bug |
+| city-coverage miss | 6 | bug |
+| unroutable not escalated | 4 | bug |
+| specialty miss | 1 | bug |
+
+The 13-row emergency bucket is the issue #21 contract (an at-capacity
+crew must **not** be dispatched to a gas leak); the dev oracle's
+`acceptable_vendor_ids` predate that rule, so they score as misses but
+the behaviour is correct. → **#66** (the 13 real bugs) and **#67** (the
+emergency/at_capacity trust-model decision — reconcile in §6, do **not**
+weaken the skip).
+
+### 9.5 Auto-resolution
+
+73 / 85 eligible (85.9%). **All 12 misses** are
+`needs_clarification=True` over-trigger on calls that should
+auto-resolve (zero from HITL over-trigger) — folded into the
+clarification-policy iteration for #26.
+
+### 9.6 Top 5 actionable findings (filed as follow-up issues)
+
+| # | finding | axis (weight) | label |
+|---|---------|---------------|-------|
+| **#63** | HITL under-escalation on trap+edge (20 FN) | hitl_f1 (15%) | `type:bug` `p1` |
+| **#64** | HITL over-escalation (16 FP) | hitl_f1 (15%) | `type:feature` `p2` |
+| **#65** | building/address co-fail on 22 rows | fields (10%) | `type:bug` `p1` |
+| **#66** | vendor: 7 needless escalations + 6 city misses | vendor (10%) | `type:bug` `p1` |
+| **#67** | 13 emergencies unroutable (all at_capacity) — policy | vendor (10%) | `type:feature` `p2` |
+
+Secondary (deferred to #26): `risk_level` is 84% but weak on `edge` /
+`clarification` case types — the next tier after the HITL and field
+levers above.
 
 ---
 
@@ -685,6 +753,6 @@ mechanism in §4.5.
 
 ---
 
-*Last updated: 2026-05-14. First-draft author: agent + reviewer
-(issue #29). Open work: §9 (issue #25) and the final composite-score
-table in §10.1 (issue #26).*
+*Last updated: 2026-05-19. Authors: agent + reviewer (issues #29, #25).
+Open work: the final composite-score table in §10.1 (post-iteration,
+#26 → #30).*
