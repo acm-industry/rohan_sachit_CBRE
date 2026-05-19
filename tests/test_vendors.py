@@ -199,9 +199,16 @@ def test_qualify_returns_empty_when_nothing_satisfies():
 # ─── subcategory→vendor-type mapping (issue #20 hook) ──────────────────────
 
 
-def test_loose_mapping_empty_by_default():
-    # Until issue #20 lands, the mapping is empty.
-    assert vendors._subcat_to_vendor_types() == {}
+def test_loose_mapping_populated_and_wellformed():
+    # Issue #20 has landed: the derived map is committed and loaded.
+    # Every entry must be a non-empty tuple of known vendor_type strings.
+    m = vendors._subcat_to_vendor_types()
+    assert m, "derived subcategory→vendor_type map is empty (issue #20 artifact missing?)"
+    catalog_types = {v.vendor_type for v in vendors.all_vendors()}
+    for sub, types in m.items():
+        assert isinstance(sub, str) and sub
+        assert isinstance(types, tuple) and len(types) >= 1, f"{sub}: {types!r}"
+        assert all(t in catalog_types for t in types), f"{sub} → unknown vendor_type in {types!r}"
 
 
 def test_loose_mapping_extends_specialty_filter(monkeypatch=None):

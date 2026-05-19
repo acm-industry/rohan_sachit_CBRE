@@ -1,0 +1,110 @@
+{
+  "access_control": [
+    "access_control"
+  ],
+  "active_threat": [
+    "security"
+  ],
+  "air_quality": [
+    "hvac"
+  ],
+  "appliance_kitchen": [
+    "appliance_tech"
+  ],
+  "auto_door": [
+    "access_control"
+  ],
+  "carpet_floor": [
+    "janitorial"
+  ],
+  "controls_bms": [
+    "hvac"
+  ],
+  "door_mechanical": [
+    "facilities"
+  ],
+  "drainage_backup": [
+    "plumber"
+  ],
+  "entrapment": [
+    "elevator_service"
+  ],
+  "fire_smoke": [
+    "fire_life_safety"
+  ],
+  "gas_chemical": [
+    "fire_life_safety"
+  ],
+  "glass_damage": [
+    "glazier"
+  ],
+  "infestation": [
+    "pest_control"
+  ],
+  "landscaping": [
+    "grounds"
+  ],
+  "lighting": [
+    "facilities"
+  ],
+  "low_voltage_data": [
+    "low_voltage_tech"
+  ],
+  "malfunction": [
+    "elevator_service"
+  ],
+  "minor_issue": [
+    "elevator_service"
+  ],
+  "no_cooling": [
+    "hvac"
+  ],
+  "no_heating": [
+    "hvac"
+  ],
+  "panel_hazard": [
+    "electrician"
+  ],
+  "parking_lighting": [
+    "electrician"
+  ],
+  "pavement_damage": [
+    "exterior_maintenance"
+  ],
+  "pipe_leak": [
+    "plumber"
+  ],
+  "power_outage": [
+    "electrician"
+  ],
+  "refrigerant": [
+    "hvac"
+  ],
+  "restroom_fixture": [
+    "plumber"
+  ],
+  "restroom_supplies": [
+    "janitorial"
+  ],
+  "roof_leak": [
+    "roofer"
+  ],
+  "signage_fencing": [
+    "exterior_maintenance"
+  ],
+  "slip_trip": [
+    "janitorial"
+  ],
+  "structural": [
+    "fire_life_safety"
+  ],
+  "suspicious_person": [
+    "security"
+  ],
+  "unauthorized_access": [
+    "security"
+  ],
+  "waste_odor": [
+    "janitorial"
+  ]
+}
