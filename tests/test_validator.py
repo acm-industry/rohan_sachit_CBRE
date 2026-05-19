@@ -1,7 +1,8 @@
 """Tests for `agent.nodes.validator`.
 
 Validates the HITL gate logic: needs_human_review decisions,
-emergency dispatch conservatism, and edge cases.
+emergency-dispatch conservatism (the hazard-cue / fallback / confidence
+preconditions that prevent a false −5 911), and edge cases.
 """
 from __future__ import annotations
 
@@ -49,17 +50,20 @@ def test_high_risk_needs_review():
     assert "high_band" in result.reasons[0]
 
 
-def test_fire_emergency_dispatches_911():
-    """EMERGENCY + life-safety subcategory → 911 + review."""
+def test_fire_emergency_with_hazard_cue_dispatches_911():
+    """EMERGENCY + life-safety subcategory + extracted hazard cue +
+    confident, non-fallback classification → 911 + review."""
     _reset()
     result = validate(
         subcategory="fire_smoke",
         risk_level="EMERGENCY",
         classification_confidence=0.95,
         fallback_invoked=False,
+        extracted_urgency_cues=["smoke filling the lobby", "I can see flames"],
     )
     assert result.needs_human_review is True
     assert result.dispatched_emergency_services is True
+    assert any("emergency_dispatch:fire_smoke" in r for r in result.reasons)
 
 
 def test_trap_subcategory_triggers_review():
@@ -74,6 +78,89 @@ def test_trap_subcategory_triggers_review():
     assert result.needs_human_review is True
     assert result.dispatched_emergency_services is False
     assert "trap_prone" in result.reasons[0]
+
+
+# ─── False-911 prevention (the −5 penalty path) ───────────────────────
+
+
+def test_misclassified_no_cue_does_not_dispatch_911():
+    """A benign call *misclassified* as a life-safety EMERGENCY on the
+    low-confidence fallback path with NO extracted hazard cue must never
+    auto-dispatch 911 — it escalates to a human instead."""
+    _reset()
+    for sub in ("fire_smoke", "active_threat", "gas_chemical", "entrapment", "panel_hazard"):
+        result = validate(
+            subcategory=sub,
+            risk_level="EMERGENCY",
+            classification_confidence=0.2,
+            fallback_invoked=True,
+            extracted_urgency_cues=[],
+        )
+        assert result.dispatched_emergency_services is False, sub
+        assert result.needs_human_review is True, sub
+        assert any("life_safety_no_autodispatch" in r for r in result.reasons), sub
+
+
+def test_life_safety_emergency_with_cue_but_fallback_no_911():
+    """Hazard cue present but the classifier fell back → label is a guess;
+    do not auto-dispatch, escalate instead."""
+    _reset()
+    result = validate(
+        subcategory="fire_smoke",
+        risk_level="EMERGENCY",
+        classification_confidence=0.9,
+        fallback_invoked=True,
+        extracted_urgency_cues=["smoke everywhere"],
+    )
+    assert result.dispatched_emergency_services is False
+    assert result.needs_human_review is True
+    assert any("life_safety_no_autodispatch:classifier_fallback" in r for r in result.reasons)
+
+
+def test_life_safety_emergency_with_cue_but_low_confidence_no_911():
+    """Hazard cue present but classifier confidence below the dispatch
+    floor → escalate to a human, do not auto-dispatch."""
+    _reset()
+    result = validate(
+        subcategory="gas_chemical",
+        risk_level="EMERGENCY",
+        classification_confidence=0.35,
+        fallback_invoked=False,
+        extracted_urgency_cues=["strong gas leak smell"],
+    )
+    assert result.dispatched_emergency_services is False
+    assert result.needs_human_review is True
+    assert any("life_safety_no_autodispatch:low_confidence" in r for r in result.reasons)
+
+
+def test_emergency_non_life_safety_no_911():
+    """EMERGENCY but non-life-safety subcategory → review but no 911,
+    even with a hazard-sounding cue."""
+    _reset()
+    result = validate(
+        subcategory="pipe_leak",
+        risk_level="EMERGENCY",
+        classification_confidence=0.9,
+        fallback_invoked=False,
+        extracted_urgency_cues=["water everywhere", "flooding fast"],
+    )
+    assert result.needs_human_review is True
+    assert result.dispatched_emergency_services is False
+
+
+def test_should_pause_method_mirrors_needs_review():
+    """`ValidatorResult.should_pause()` is the boolean the graph reads
+    for `interrupt()` — it must mirror needs_human_review and be
+    decoupled from the 911 flag."""
+    _reset()
+    paused = validate(subcategory="unauthorized_access", risk_level="HIGH")
+    assert paused.should_pause() is True
+    assert paused.should_pause() == paused.needs_human_review
+    auto = validate(
+        subcategory="door_mechanical", risk_level="LOW",
+        classification_confidence=0.9,
+    )
+    assert auto.should_pause() is False
 
 
 # ─── Additional edge cases ────────────────────────────────────────────
@@ -105,21 +192,12 @@ def test_fallback_invoked_triggers_review():
     assert "fallback" in result.reasons[0]
 
 
-def test_emergency_non_life_safety_no_911():
-    """EMERGENCY but non-life-safety subcategory → review but no 911."""
-    _reset()
-    result = validate(
-        subcategory="pipe_leak",
-        risk_level="EMERGENCY",
-        classification_confidence=0.9,
-        fallback_invoked=False,
-    )
-    assert result.needs_human_review is True
-    assert result.dispatched_emergency_services is False
-
-
 def test_full_dev_set_hitl_accuracy():
-    """Validate HITL decisions against 200-row dev set ground truth."""
+    """Validate HITL decisions against 200-row dev set ground truth.
+
+    No urgency cues are passed (oracle labels only), so this is also a
+    strong false-911 guard: with no hazard cue, dispatch can never fire.
+    """
     import json
 
     _reset()
