@@ -1,0 +1,94 @@
+{
+  "samples": [
+    {
+      "transcript_id": "EVAL-0011",
+      "wall_ms": 18406.061,
+      "latency_ms": {
+        "extract": 18405.39,
+        "retrieve": 0.0,
+        "classify": 0.0,
+        "location": 0.0,
+        "risk": 0.0,
+        "validate": 0.0,
+        "vendor": 0.0,
+        "clarify": 0.0,
+        "summary": 0.0,
+        "total": 18405.411
+      },
+      "subcategory": "minor_issue",
+      "risk_level": "MEDIUM",
+      "needs_human_review": true
+    },
+    {
+      "transcript_id": "EVAL-0019",
+      "wall_ms": 23663.087,
+      "latency_ms": {
+        "extract": 12245.036,
+        "retrieve": 1179.043,
+        "classify": 10176.418,
+        "location": 61.14,
+        "risk": 0.434,
+        "validate": 0.039,
+        "vendor": 0.741,
+        "clarify": 0.028,
+        "summary": 0.007,
+        "total": 23663.041
+      },
+      "subcategory": "power_outage",
+      "risk_level": "HIGH",
+      "needs_human_review": true
+    }
+  ],
+  "aggregate": {
+    "extract": {
+      "min": 12245.036,
+      "mean": 15325.213,
+      "max": 18405.39
+    },
+    "retrieve": {
+      "min": 0.0,
+      "mean": 589.521,
+      "max": 1179.043
+    },
+    "classify": {
+      "min": 0.0,
+      "mean": 5088.209,
+      "max": 10176.418
+    },
+    "location": {
+      "min": 0.0,
+      "mean": 30.57,
+      "max": 61.14
+    },
+    "risk": {
+      "min": 0.0,
+      "mean": 0.217,
+      "max": 0.434
+    },
+    "validate": {
+      "min": 0.0,
+      "mean": 0.019,
+      "max": 0.039
+    },
+    "vendor": {
+      "min": 0.0,
+      "mean": 0.37,
+      "max": 0.741
+    },
+    "clarify": {
+      "min": 0.0,
+      "mean": 0.014,
+      "max": 0.028
+    },
+    "summary": {
+      "min": 0.0,
+      "mean": 0.004,
+      "max": 0.007
+    },
+    "total": {
+      "min": 18405.411,
+      "mean": 21034.226,
+      "max": 23663.041
+    }
+  }
+}

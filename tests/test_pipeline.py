@@ -166,6 +166,11 @@ _DEFAULTS = {
     "validate": _validator,
     "select_vendor": _vendor,
     "needs_clarification": _clarification,
+    # Issue #27: retrieve is now invoked by the orchestrator (lifted out
+    # of classify_call so its cost can be timed separately). Patch it to
+    # an empty list so tests don't hit chroma; classify_call is also
+    # mocked, so the empty records list never actually drives anything.
+    "retrieve": lambda *_a, **_kw: [],
 }
 
 
@@ -220,6 +225,20 @@ def test_safe_fallback_schema():
     assert result["needs_human_review"] is True
     assert len(result["call_summary"]) >= 30
     assert "breakroom sink" in result["trainer_log"]["full_transcript"]
+
+
+def test_safe_fallback_emits_fully_shaped_latency_with_no_timings():
+    """Contract: ai_prediction.latency_ms is always a fully-shaped dict.
+
+    Even when `_safe_fallback` is called with no timings at all (e.g. an
+    upstream code path that never threaded the timings dict through),
+    every STAGE_NAMES key must be present with 0.0 — downstream
+    consumers can assume the shape is fixed.
+    """
+    result = orchestrator._safe_fallback(SAMPLE_TURNS, "test error")
+    latency = result["trainer_log"]["ai_prediction"]["latency_ms"]
+    assert set(latency.keys()) == set(orchestrator.STAGE_NAMES)
+    assert all(v == 0.0 for v in latency.values())
 
 
 def test_safe_fallback_uses_valid_taxonomy_pair():
@@ -413,6 +432,57 @@ def test_trainer_log_handles_empty_record_ids():
         classify_call=_good_classification(retrieved_record_ids=[]),
     )
     assert result["trainer_log"]["ai_prediction"]["retrieved_record_ids"] == []
+
+
+# ─── Issue #27: latency profile ────────────────────────────────────────
+
+
+def test_trainer_log_carries_latency_breakdown():
+    """Every per-stage label in STAGE_NAMES surfaces in ai_prediction.latency_ms.
+
+    Pinning the stage set guards against silent drift: if a future
+    refactor renames a stage or drops it from the orchestrator, the
+    eval_runs latency report would suddenly become inconsistent. The
+    test fails loudly instead.
+    """
+    result = _run()
+    latency = result["trainer_log"]["ai_prediction"]["latency_ms"]
+    assert set(latency.keys()) == set(orchestrator.STAGE_NAMES), (
+        f"latency_ms keys diverged from STAGE_NAMES: "
+        f"missing={set(orchestrator.STAGE_NAMES) - latency.keys()}, "
+        f"extra={latency.keys() - set(orchestrator.STAGE_NAMES)}"
+    )
+    for name, ms in latency.items():
+        assert isinstance(ms, (int, float)), f"{name} latency is not numeric"
+        assert ms >= 0.0, f"{name} latency is negative"
+
+
+def test_latency_total_at_least_sums_subtotals():
+    """`total` is the wall-clock from first-stage start to summary-stage end —
+    so it should be ≥ the sum of measured per-node subtotals (modulo
+    tiny non-stage glue like `_flatten` and `profiles.lookup`)."""
+    result = _run()
+    latency = result["trainer_log"]["ai_prediction"]["latency_ms"]
+    sub = sum(v for k, v in latency.items() if k != "total")
+    # Allow a small tolerance: total can be marginally less than sub if
+    # perf_counter resolution rounds unfavourably on a sub-millisecond
+    # stage, but it should never be drastically less.
+    assert latency["total"] + 0.5 >= sub, (
+        f"total {latency['total']} unexpectedly less than subtotal sum {sub}"
+    )
+
+
+def test_latency_breakdown_on_extract_failure_fallback():
+    """Fault-isolation path still emits the breakdown (with zeros for
+    stages that never ran). Without this, a slow extract followed by a
+    fallback would silently lose the cost in the latency report."""
+    result = _run(extract=RuntimeError("extract boom"))
+    latency = result["trainer_log"]["ai_prediction"]["latency_ms"]
+    assert set(latency.keys()) == set(orchestrator.STAGE_NAMES)
+    # extract attempted but raised; total stamped at fallback time.
+    assert latency["retrieve"] == 0.0
+    assert latency["classify"] == 0.0
+    assert latency["total"] >= 0.0
 
 
 # ─── No false-911 guarantee ────────────────────────────────────────────

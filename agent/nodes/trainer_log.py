@@ -63,9 +63,10 @@ def build_ai_prediction(
     validator_reasons: Optional[List[str]] = None,
     risk_reasons: Optional[List[str]] = None,
     retrieved_record_ids: Optional[List[str]] = None,
+    latency_ms: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     """Build the ai_prediction snapshot from node outputs."""
-    return {
+    pred: Dict[str, Any] = {
         "category": category,
         "subcategory": subcategory,
         "risk_level": risk_level,
@@ -79,3 +80,10 @@ def build_ai_prediction(
         "risk_reasons": risk_reasons or [],
         "retrieved_record_ids": retrieved_record_ids or [],
     }
+    # Only emit latency_ms when the orchestrator measured it. Older
+    # callers (tests, harness replays) that don't pass it stay unchanged
+    # so the scorer's strict-shape check on existing trainer_log fields
+    # isn't disturbed.
+    if latency_ms is not None:
+        pred["latency_ms"] = latency_ms
+    return pred
