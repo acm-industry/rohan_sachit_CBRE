@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from agent.data import profiles
+from agent.data import phone_history, profiles
 from agent.data.buildings import Building, FloorCheck, get_by_name, validate_floor
 from agent.data.profiles import Profile
 
@@ -41,7 +41,7 @@ class ResolvedLocation:
     city: Optional[str]
     building_type: Optional[str]
     floor_check: FloorCheck
-    source_building: str  # 'transcript' | 'profile' | 'none'
+    source_building: str  # 'transcript' | 'phone_history' | 'profile' | 'none'
     source_floor: str     # 'transcript' | 'profile' | 'none'
     # True when the resolved floor is out of range for the building — the
     # orchestrator must raise a clarification rather than dispatch on a
@@ -76,43 +76,100 @@ def reconcile(
     building_confidence: float = 0.0,
     floor_confidence: float = 0.0,
     profile: Optional[Profile] = None,
+    caller_phone: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> ResolvedLocation:
-    """Reconcile location from extraction + profile + registry.
+    """Reconcile location from extraction + phone history + profile + registry.
 
-    Strategy:
-    - The profile is first gated through `_usable_profile`: an inactive
-      or stale profile is dropped (treated as no profile at all).
-    - If extraction has a building name (confidence > 0.3), try to resolve
-      it against the registry. This catches both transcript-stated names
-      and profile-derived names the LLM echoed.
-    - If extraction has no building name or the registry lookup fails,
-      fall back to the (usable) profile's primary_building_name → registry.
-    - Address and city always come from the registry when we have a match;
-      the registry is the canonical source for those.
-    - Floor: extraction wins when confidence is high (> 0.3); otherwise
-      fall back to the usable profile. Validate against floor_count; an
-      out-of-range floor sets `needs_clarification` (kept, not corrected).
+    Precedence (highest first):
+    - **Explicit transcript** building (extraction confidence > 0.3) —
+      always wins (AC #19).
+    - **Caller phone history** — when the historicals corpus has ≥
+      `phone_history.MIN_N` past tickets for this phone, all but
+      ≥ `MIN_SHARE` concentrated on one building, use it (issue #65).
+      Outranks the profile because historical tickets are the recency
+      signal the static profile lacks (catches callers who moved
+      buildings: the 5 wrong-value dev rows all matched this pattern
+      with 160–190 historical tickets, all on the GT building).
+    - **Active + non-stale profile** (`_usable_profile`) — inactive or
+      stale profiles are dropped and precedence falls through.
+    - **Anonymous** fallback (None).
+
+    Address / city / building_type come from the registry when a name
+    matched; from the chosen-source's fields otherwise.
+
+    Floor: extraction wins when confidence is high (> 0.3); otherwise
+    fall back to the usable profile. An out-of-range floor sets
+    `needs_clarification` (kept verbatim, not silently corrected).
 
     Args:
+        caller_phone: caller's phone number (for the historicals lookup).
         now: reference time for the profile-staleness check. Defaults to
             wall-clock now (production); tests pin it for determinism.
     """
+    raw_profile = profile  # keep for the profile-echo detection below
     profile = _usable_profile(profile, now)
 
     building: Optional[Building] = None
     source_building = "none"
     resolved_name: Optional[str] = None
+    # phone_history-derived facts: when the historicals corpus is
+    # confidently concentrated on one building for this phone, it's the
+    # recency signal the static profile lacks.
+    history_match = phone_history.recent_building(caller_phone)
 
-    # Try extraction's building name first
-    if extracted_building_name and building_confidence > 0.3:
+    # Profile-echo detection: agent/nodes/extract.py merges the caller
+    # profile into the LLM prompt as a prior, and on transcripts where
+    # the caller doesn't restate the building the LLM frequently emits
+    # the profile-derived building back at high confidence. We can spot
+    # that pattern (extraction value literally matches the raw profile
+    # building) and let phone_history override even though `extraction`
+    # nominally "won" branch 1 — this isn't violating the AC #19
+    # transcript-wins rule because the value didn't come from the
+    # transcript.
+    def _eqci(a, b):
+        return bool(a and b and a.strip().lower() == b.strip().lower())
+
+    profile_echo = (
+        extracted_building_name is not None
+        and raw_profile is not None
+        and _eqci(extracted_building_name, raw_profile.primary_building_name)
+    )
+    history_contradicts_extraction = (
+        history_match is not None
+        and extracted_building_name is not None
+        and not _eqci(extracted_building_name, history_match.building_name)
+    )
+    override_with_history = (
+        history_match is not None
+        and (profile_echo and history_contradicts_extraction
+             or (extracted_building_name is None or building_confidence <= 0.3))
+    )
+
+    # 1. Try extraction's building name first (transcript wins), unless
+    #    we've detected the profile-echo / phone-history-overrides case.
+    if (
+        extracted_building_name
+        and building_confidence > 0.3
+        and not (profile_echo and history_contradicts_extraction)
+    ):
         building = get_by_name(extracted_building_name)
         if building:
             resolved_name = building.name
             source_building = "transcript"
 
-    # Fall back to profile's building
-    if building is None and profile and profile.primary_building_name:
+    # 2. Phone-history majority — outranks profile (#65), and overrides a
+    #    high-confidence-but-profile-echoed extraction (issue #65 #2).
+    if building is None and history_match is not None and override_with_history:
+        building = get_by_name(history_match.building_name)
+        if building:
+            resolved_name = building.name
+        else:
+            resolved_name = history_match.building_name
+        source_building = "phone_history"
+
+    # 3. Fall back to profile's building.
+    if building is None and resolved_name is None and profile and profile.primary_building_name:
         building = get_by_name(profile.primary_building_name)
         if building:
             resolved_name = building.name
@@ -121,12 +178,13 @@ def reconcile(
             resolved_name = profile.primary_building_name
             source_building = "profile"
 
-    # If extraction had a name but it didn't resolve, still use it raw
+    # 4. If extraction had a name but it didn't resolve, still use it raw.
     if resolved_name is None and extracted_building_name and building_confidence > 0.3:
         resolved_name = extracted_building_name
         source_building = "transcript"
 
-    # Address and city: registry wins, then profile
+    # Address / city / building_type: registry wins; then the chosen
+    # source (phone_history when we picked it, else profile).
     address: Optional[str] = None
     city: Optional[str] = None
     building_type: Optional[str] = None
@@ -135,12 +193,23 @@ def reconcile(
         address = building.address
         city = building.city
         building_type = building.building_type
-    if not address and profile:
-        address = profile.primary_address
-    if not city and profile:
-        city = profile.primary_city
-    if not building_type and profile:
-        building_type = profile.primary_building_type
+    if source_building == "phone_history" and history_match is not None:
+        # Even if the registry resolved, phone-history's fields are
+        # consistent (same building); they only matter when the registry
+        # missed (history names a building outside our registry).
+        if not address:
+            address = history_match.address
+        if not city:
+            city = history_match.city
+        if not building_type:
+            building_type = history_match.building_type
+    elif profile:
+        if not address:
+            address = profile.primary_address
+        if not city:
+            city = profile.primary_city
+        if not building_type:
+            building_type = profile.primary_building_type
 
     # Floor: extraction wins when confident, otherwise profile
     floor: Optional[str] = None
