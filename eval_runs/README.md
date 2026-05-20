@@ -98,3 +98,4 @@ Output is deterministic modulo the documented LLM-provider noise floor
 | date (UTC) | git SHA | composite | false_911 | notes |
 |------------|---------|-----------|-----------|-------|
 | 2026-05-19T05:15:15Z | `33fc3bc` | 87.95 | 0 | baseline — fixed pipeline (issues #16/#19/#20/#21 + orchestrator) |
+| 2026-05-19T (run c)  | `98b2c16` | 88.10 | 0 | issue #65 — phone-history fallback + profile-echo override (fields axis 88.0 → 91.0, +3.0; small LLM-noise dips on subcategory/risk). Predictions: `eval_runs/dev_issue65.json`. |
