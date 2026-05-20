@@ -203,17 +203,49 @@ def test_extract_with_stub_llm_returns_response():
     assert result.problem_summary == "stubbed result"
 
 
-def test_extract_passes_profile_block_into_prompt_for_known_caller():
-    canned = _stub_extraction()
-    stub = _StubLLM(canned)
-    extract(
-        [{"speaker": "caller", "text": "leak"}],
-        "+1-310-555-0142",
-        llm=stub,
-    )
-    assert stub.last_prompt is not None
-    assert "Leo Green" in stub.last_prompt
-    assert "Westfield Commerce Center" in stub.last_prompt
+def test_extract_passes_profile_block_into_prompt_for_fresh_known_caller(monkeypatch=None):
+    """Fresh (active + not stale) profile is merged into the prompt as a
+    prior. Patches `profiles.is_stale` to False so the assertion holds
+    regardless of the static fixture's `last_verified_at` drift over
+    wall-clock time."""
+    orig_is_stale = profiles.is_stale
+    profiles.is_stale = lambda profile, **kwargs: False
+    try:
+        canned = _stub_extraction()
+        stub = _StubLLM(canned)
+        extract(
+            [{"speaker": "caller", "text": "leak"}],
+            "+1-310-555-0142",
+            llm=stub,
+        )
+        assert stub.last_prompt is not None
+        assert "Leo Green" in stub.last_prompt
+        assert "Westfield Commerce Center" in stub.last_prompt
+    finally:
+        profiles.is_stale = orig_is_stale
+
+
+def test_extract_drops_stale_profile_from_prompt():
+    """Issue-26 fix: a stale profile (e.g. `last_verified_at` >180 days
+    ago) is dropped before prompt assembly so the LLM doesn't hallucinate
+    a wrong building name from out-of-date CRM data. The prompt should
+    instead emit the anonymous-caller block."""
+    orig_is_stale = profiles.is_stale
+    profiles.is_stale = lambda profile, **kwargs: True  # force stale
+    try:
+        canned = _stub_extraction()
+        stub = _StubLLM(canned)
+        extract(
+            [{"speaker": "caller", "text": "leak"}],
+            "+1-310-555-0142",
+            llm=stub,
+        )
+        assert stub.last_prompt is not None
+        assert "Leo Green" not in stub.last_prompt
+        assert "Westfield Commerce Center" not in stub.last_prompt
+        assert "no caller profile" in stub.last_prompt
+    finally:
+        profiles.is_stale = orig_is_stale
 
 
 def test_extract_passes_anonymous_block_for_unknown_phone():
