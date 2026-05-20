@@ -137,6 +137,115 @@ def test_low_confidence_extraction_falls_back_to_profile():
 # ─── Tests: profile active/stale gate (issue #19 AC) ─────────────────
 
 
+def test_phone_history_outranks_stale_profile_building():
+    """Issue #65: when the historicals corpus has overwhelming evidence
+    of the caller's current building (here +1-818-555-0156 → Metro
+    Center Offices, 183 historical tickets at 100%), the phone_history
+    override outranks a profile pointing at a different building."""
+    misleading_profile = Profile(
+        **{**_PROFILE_LEO.__dict__,
+           "phone_number": "+1-818-555-0156",
+           "primary_building_name": "Westfield Commerce Center",
+           "primary_address": "100 Wilshire Blvd",
+           "primary_city": "Los Angeles"}
+    )
+    loc = reconcile(
+        extracted_building_name=None,
+        extracted_floor="Floor 8",
+        building_confidence=0.0,
+        floor_confidence=0.95,
+        profile=misleading_profile,
+        caller_phone="+1-818-555-0156",
+        now=_NOW,
+    )
+    assert loc.building_name == "Metro Center Offices"
+    assert loc.address == "650 Metro Center Way"
+    assert loc.city == "Burbank"
+    assert loc.source_building == "phone_history"
+    # Floor still comes from transcript (history doesn't override floor).
+    assert loc.floor == "Floor 8"
+
+
+def test_profile_echo_at_high_confidence_is_overridden_by_phone_history():
+    """Issue #65 — the profile-echo bug. agent/nodes/extract.py merges
+    the caller profile into the LLM prompt; when the transcript doesn't
+    restate the building, the LLM frequently emits the profile-derived
+    building back at confidence 1.0 (so it looks like a transcript
+    extraction). When that value literally matches the profile's
+    building AND phone_history strongly contradicts, override — this
+    isn't a transcript-wins violation because the value never came from
+    the transcript."""
+    misleading_profile = Profile(
+        **{**_PROFILE_LEO.__dict__,
+           "phone_number": "+1-818-555-0156",
+           "primary_building_name": "Westfield Commerce Center",
+           "primary_address": "100 Wilshire Blvd",
+           "primary_city": "Los Angeles"}
+    )
+    loc = reconcile(
+        extracted_building_name="Westfield Commerce Center",  # echoed from profile
+        extracted_floor="Floor 8",
+        building_confidence=1.0,                                # high — looks transcript-explicit
+        floor_confidence=1.0,
+        profile=misleading_profile,
+        caller_phone="+1-818-555-0156",                         # 183 hist tickets → Metro Center
+        now=_NOW,
+    )
+    assert loc.building_name == "Metro Center Offices"
+    assert loc.address == "650 Metro Center Way"
+    assert loc.source_building == "phone_history"
+
+
+def test_genuine_transcript_building_not_overridden_when_no_profile_echo():
+    """Defensive: if the extraction differs from the profile (genuine
+    transcript signal), phone_history must NOT override — even if the
+    historicals point elsewhere. AC #19 transcript-wins still holds."""
+    misleading_profile = Profile(
+        **{**_PROFILE_LEO.__dict__,
+           "phone_number": "+1-818-555-0156",
+           "primary_building_name": "Westfield Commerce Center"}
+    )
+    loc = reconcile(
+        extracted_building_name="Pacific Ridge Medical Plaza",  # genuine transcript value
+        extracted_floor="Floor 3",
+        building_confidence=1.0,
+        floor_confidence=0.95,
+        profile=misleading_profile,
+        caller_phone="+1-818-555-0156",  # historicals say Metro Center
+        now=_NOW,
+    )
+    assert loc.building_name == "Pacific Ridge Medical Plaza"
+    assert loc.source_building == "transcript"
+
+
+def test_explicit_transcript_outranks_phone_history():
+    """Transcript-stated building always wins over phone_history (AC #19)."""
+    loc = reconcile(
+        extracted_building_name="Pacific Ridge Medical Plaza",
+        extracted_floor="Floor 3",
+        building_confidence=0.95,
+        floor_confidence=0.95,
+        caller_phone="+1-818-555-0156",  # would otherwise resolve to Metro Center
+    )
+    assert loc.building_name == "Pacific Ridge Medical Plaza"
+    assert loc.source_building == "transcript"
+
+
+def test_anonymous_with_phone_in_history_recovers_building():
+    """A caller with no profile entry but a strong historicals match —
+    covers the 1/17 None-building dev row whose phone IS in historicals."""
+    loc = reconcile(
+        extracted_building_name=None,
+        extracted_floor="Floor 8",
+        building_confidence=0.0,
+        floor_confidence=0.95,
+        profile=None,
+        caller_phone="+1-818-555-0156",
+    )
+    assert loc.building_name == "Metro Center Offices"
+    assert loc.source_building == "phone_history"
+
+
 def test_inactive_profile_is_ignored():
     """A deactivated profile is not trusted; precedence falls through to
     the anonymous fallback (None)."""

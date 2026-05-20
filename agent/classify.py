@@ -115,6 +115,10 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
             building_confidence=extraction.confidence.building_name,
             floor_confidence=extraction.confidence.floor,
             profile=profile,
+            # Issue #65: phone history outranks the (possibly stale)
+            # static profile when the historicals are confidently
+            # concentrated on a single building for this phone.
+            caller_phone=caller_phone,
         )
     except Exception as e:
         logger.warning("location reconciliation failed: %s", e)
