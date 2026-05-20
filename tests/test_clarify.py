@@ -76,6 +76,25 @@ def test_sparse_caller_does_not_fire_when_total_speech_is_high():
     assert _sparse_caller(turns) is False
 
 
+def test_sparse_total_words_threshold_is_20():
+    """Drift guard for the tightened sparse threshold (was 24, now 20).
+    A change here either deliberate (sweep findings) or accidental
+    should be reviewed against clarif F1 / auto_resolution."""
+    assert SPARSE_TOTAL_WORDS == 20
+    assert SPARSE_FIRST_TURN_WORDS == 6  # unchanged in this PR
+
+
+def test_sparse_caller_does_not_fire_on_short_first_with_above_20_total_words():
+    """A 22-word call with a short first turn previously fired sparse
+    (24-word threshold); the tightened 20-word threshold lets it
+    auto-resolve — this is one of the dev-set clarif FP reductions."""
+    turns = [
+        {"speaker": "caller", "text": "Lights are off."},          # 3 words
+        {"speaker": "caller", "text": " ".join(["word"] * 19)},    # 19 words → total 22
+    ]
+    assert _sparse_caller(turns) is False
+
+
 def test_sparse_caller_does_not_fire_on_detailed_first_turn():
     turns = [
         {"speaker": "caller", "text": "Half the suite at Oakwood Corporate Campus on Floor 6 has no power."}
@@ -91,8 +110,17 @@ def test_generic_opening_catches_issue_with_pattern():
     assert _generic_opening(turns) is True
 
 
-def test_generic_opening_catches_being_weird_pattern():
+def test_generic_opening_does_not_fire_on_removed_weird_pattern():
+    """The "X is being weird / not working / off" branch was removed
+    from _GENERIC_OPENING_RX because it was over-matching specific
+    complaints (13 dev-set FPs vs 0 lost TPs). The remaining branches
+    (issue with / wrong with / problem with) still fire — see
+    test_generic_opening_catches_issue_with_pattern above."""
     turns = [{"speaker": "caller", "text": "The main doors are being weird."}]
+    assert _generic_opening(turns) is False
+    # And the original "issue with X" branch still fires, so generic
+    # category-level complaints are still caught.
+    turns = [{"speaker": "caller", "text": "Something is wrong with the HVAC."}]
     assert _generic_opening(turns) is True
 
 
