@@ -22,8 +22,11 @@ env/
 .DS_Store
 *.swp
 
-# Local eval outputs (committed runs go under eval_runs/)
-predictions.json
+# Local eval outputs (committed runs go under eval_runs/).
+# Issue #30 submission: `predictions.json` at the repo ROOT is the
+# graded artifact — explicitly tracked, NOT ignored. Per-iteration
+# eval predictions still live under eval_runs/.
+!/predictions.json
 /tmp_*.json
 
 # Vector store build artifacts (issue #7 will configure)
