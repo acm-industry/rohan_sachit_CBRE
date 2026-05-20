@@ -76,19 +76,65 @@ def test_build_chat_llm_passes_determinism_kwargs():
 def test_classify_is_deterministic_for_identical_input():
     """Twice on the same input → equal output dict.
 
-    Until the real pipeline lands (PR #56), `classify` is the deterministic
-    stub. Once the LangGraph orchestrator replaces the stub, this test
-    becomes a smoke-level guarantee: the orchestrator's only stochastic
-    component is the LLM provider, which we've pinned via temp=0 + seed.
+    The orchestrator's only stochastic surface is the LLM provider —
+    pinned via `temperature=0` + explicit `seed` in `agent.config`,
+    but the provider's "deterministic mode" is best-effort, not a
+    guarantee. To make this test verify *pipeline* determinism (not
+    provider stability), we install the same LLM + RAG stubs used by
+    `test_contract.py`, then assert two consecutive calls produce
+    identical output. Real-LLM end-to-end reproducibility is covered
+    separately by `test_classify.py` (API-key-gated).
     """
-    turns = [
-        {"speaker": "agent", "text": "Hello, how can I help?"},
-        {"speaker": "caller", "text": "There's water on the floor of suite 408."},
-    ]
-    phone = "+15551234567"
-    a = classify_module.classify(turns, phone)
-    b = classify_module.classify(turns, phone)
-    assert a == b, "classify() must return identical output for identical input"
+    import agent.config
+    import agent.nodes.classify as _classify_node
+    from agent.nodes.classify import (
+        CategoryEnum, Classification, SubcategoryEnum,
+    )
+    from agent.nodes.extract import Extraction, FieldConfidence
+
+    def _canned(schema):
+        if schema is Extraction:
+            return Extraction(
+                problem_summary="determinism-test stub",
+                building_name=None, floor=None, suite=None,
+                urgency_cues=[], caller_role="tenant", language="en",
+                confidence=FieldConfidence(
+                    problem_summary=0.5, building_name=0.0,
+                    floor=0.0, suite=0.0, caller_role=0.0,
+                ),
+            )
+        if schema is Classification:
+            return Classification(
+                category=CategoryEnum.ELEVATOR,
+                subcategory=SubcategoryEnum.minor_issue,
+                confidence_category=0.5, confidence_subcategory=0.5,
+                reasoning="determinism-test stub",
+                is_fallback=False, retrieved_record_ids=[],
+            )
+        raise AssertionError(f"unexpected schema: {schema!r}")
+
+    class _StubChat:
+        def with_structured_output(self, schema):
+            class _Inv:
+                def invoke(_self, _prompt): return _canned(schema)
+            return _Inv()
+
+    orig_build = agent.config.build_chat_llm
+    orig_retrieve = _classify_node.retrieve
+    agent.config.build_chat_llm = lambda settings=None: _StubChat()
+    _classify_node.retrieve = lambda *_a, **_kw: []
+    try:
+        turns = [
+            {"speaker": "agent", "text": "Hello, how can I help?"},
+            {"speaker": "caller", "text": "There's water on the floor of suite 408."},
+        ]
+        phone = "+15551234567"
+        a = classify_module.classify(turns, phone)
+        b = classify_module.classify(turns, phone)
+        assert a == b, "classify() must return identical output for identical input"
+    finally:
+        agent.config.build_chat_llm = orig_build
+        _classify_node.retrieve = orig_retrieve
 
 
 # ─── No `ChatOpenAI(` constructors outside agent/config.py ─────────────

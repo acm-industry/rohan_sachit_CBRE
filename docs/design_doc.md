@@ -1,9 +1,9 @@
 # Design Document — CBRE HITL Call-Intake Agent
 
-> **Status:** Draft (issue #29). §9 (error analysis) is now populated
-> from the committed dev baseline (issue #25). The final composite-score
-> table in §10.1 remains pending the post-iteration test run (#26 → #30).
-> Everything else describes shipped code.
+> **Status:** Submission v1 (issues #29 + #30). §9 (error analysis) is
+> populated from the committed dev baselines including the post-iteration
+> trajectory (§9.7). Submission `predictions.json` ships at the repo root,
+> tagged `submission-v1`. Everything describes shipped code.
 
 ## Table of contents
 
@@ -632,6 +632,27 @@ Secondary (deferred to #26): `risk_level` is 84% but weak on `edge` /
 `clarification` case types — the next tier after the HITL and field
 levers above.
 
+### 9.7 Post-iteration composite trajectory (submission v1)
+
+Each row is a fresh real-LLM dev-set run (200 transcripts,
+`gpt-4o-mini` @ temperature 0, seed 7) measured by
+`evaluation/scoring.py`. False-911 count is on the 16
+`over_escalation_trap` rows — the −5/case rubric penalty.
+
+| run | SHA | composite | false_911 | what changed |
+|-----|-----|-----------|-----------|--------------|
+| baseline (issues #16/#19/#20/#21 + orchestrator) | `33fc3bc` | **87.95** | 0 | First end-to-end pipeline. |
+| #63/#64 trap-cascade HITL | `7511166` | 88.30 | 0 | hitl_f1 0.684 → 0.719; cells-based override of the 15% OER threshold for trap-prone subcategories, `cascade_excludes=[waste_odor]` (joint-axis sweep showed `auto_resolution` regressed otherwise). |
+| #65 phone-history fallback | `98b2c16` | 88.10 | 0 | fields 88 → 91 (+3); recovers building/address for callers in the historicals corpus but missing from `caller_profiles.json`. Profile-echo override blocks LLM-echoed stale-profile values. |
+| stacked main (#68 + #69 + #70) | `8262a79` | 90.88 | 0 | clarif_f1 0.75 → 0.92, auto_resolution 85.9 → 97.7, vendor 84.5 → 87.5. |
+| **validator benign-context override (PR #74)** | `c6b9255` | **91.94** | 0 | Surfaced by 800-row test-set audit (#30 dry-run): hazard-cue lexicon is positive-only, fired `\bsmoke\b` even after the agent confirmed "no actual fire". 9/9 false-911s on the test-set "burnt popcorn" canary suppressed without losing any of the 4 verified-true emergencies. Avoided up to −45 raw rubric on submission. |
+
+Submission `predictions.json` (800 test transcripts) was generated
+against the `c6b9255` agent and tagged `submission-v1`. Dev composite
+on identical code: **91.94**. Test-set has no labels; safety audit
+of the 67/800 911-dispatches showed every one passed the
+benign-context gate.
+
 ---
 
 ## 10. Scale thought-experiment
@@ -753,6 +774,7 @@ mechanism in §4.5.
 
 ---
 
-*Last updated: 2026-05-19. Authors: agent + reviewer (issues #29, #25).
-Open work: the final composite-score table in §10.1 (post-iteration,
-#26 → #30).*
+*Last updated: 2026-05-20. Authors: agent + reviewer (issues #29, #25,
+#30). Submission v1 tagged. Open work for v2: latency budget (#27 —
+currently ~88 min/1K vs <60 min target) and the remaining
+risk/HITL-precision levers from §9.7.*

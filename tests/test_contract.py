@@ -43,6 +43,71 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evaluation"))
 
+# Install LLM / RAG stubs so the orchestrator never touches OpenAI or
+# loads the chroma store. The schema canary's job is to catch
+# output-contract drift in the full pipeline (location, risk, validator,
+# vendor, clarify, summary, trainer_log) — running the real LLM-backed
+# extract/classify just to verify the *envelope* shape wastes CI
+# seconds and burns API budget. With these stubs the test completes in
+# <5s without OPENAI_API_KEY, matching the issue #2 AC.
+import agent.config  # noqa: E402
+import agent.nodes.classify as _classify_node  # noqa: E402
+import agent.nodes.extract as _extract_node  # noqa: E402
+import agent.rag.retriever  # noqa: E402
+from agent.nodes.extract import Extraction, FieldConfidence  # noqa: E402
+from agent.nodes.classify import (  # noqa: E402
+    CategoryEnum,
+    Classification,
+    SubcategoryEnum,
+)
+
+
+def _canned(schema):
+    """Return a minimal-but-valid instance for the schema the agent asks
+    for via `llm.with_structured_output(...)`. Extract + classify are
+    the only nodes that go through the LLM."""
+    if schema is Extraction:
+        return Extraction(
+            problem_summary="contract-test stub",
+            building_name=None, floor=None, suite=None,
+            urgency_cues=[], caller_role="tenant", language="en",
+            confidence=FieldConfidence(
+                problem_summary=0.5, building_name=0.0,
+                floor=0.0, suite=0.0, caller_role=0.0,
+            ),
+        )
+    if schema is Classification:
+        return Classification(
+            category=CategoryEnum.ELEVATOR,
+            subcategory=SubcategoryEnum.minor_issue,
+            confidence_category=0.5, confidence_subcategory=0.5,
+            reasoning="contract-test stub",
+            is_fallback=False, retrieved_record_ids=[],
+        )
+    raise AssertionError(f"unexpected structured-output schema: {schema!r}")
+
+
+class _StubChat:
+    """Mimics the langchain ChatOpenAI surface that
+    `agent.nodes.extract` and `agent.nodes.classify` use via
+    `llm.with_structured_output(schema).invoke(prompt)`."""
+    def with_structured_output(self, schema):
+        class _Inv:
+            def invoke(_self, _prompt):
+                return _canned(schema)
+        return _Inv()
+
+
+# `agent.nodes.classify` does `from agent.rag.retriever import retrieve`
+# at module level, so the function is bound *locally* in that module —
+# we must patch the local name, not just the source module's attribute.
+# `build_chat_llm` is accessed via `config.build_chat_llm(...)` in both
+# extract and classify, so patching the source module suffices for it.
+agent.config.build_chat_llm = lambda settings=None: _StubChat()
+agent.rag.retriever.retrieve = lambda *_a, **_kw: []
+_classify_node.retrieve = lambda *_a, **_kw: []
+_extract_node.config = agent.config  # be paranoid: re-bind module ref
+
 from agent.classify import classify  # noqa: E402
 from prediction import Prediction, TrainerLog  # noqa: E402
 

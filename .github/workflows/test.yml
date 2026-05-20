@@ -39,18 +39,18 @@ jobs:
         run: python tests/test_contract.py
 
       - name: Run remaining fast tests (no API key required)
-        # These pass against the data files committed to the repo. Any
-        # that need real LLM calls are skipped via OPENAI_API_KEY guards
-        # already in the test files.
+        # Globs every tests/test_*.py and runs each in isolation. Real-LLM
+        # tests (test_classify, test_extract) and the RAG-store smoke
+        # tests (test_rag_*) are excluded — they need OPENAI_API_KEY and
+        # the persistent chroma store, neither of which CI carries.
+        # test_contract is already run above as the canary.
         run: |
-          for f in tests/test_audit.py \
-                   tests/test_buildings.py \
-                   tests/test_clarify.py \
-                   tests/test_hitl.py \
-                   tests/test_profiles.py \
-                   tests/test_risk.py \
-                   tests/test_risk_assignment.py \
-                   tests/test_vendors.py; do
+          set -e
+          for f in tests/test_*.py; do
+            case "$(basename "$f")" in
+              test_contract.py|test_classify.py|test_extract.py|test_rag_build.py|test_rag_retriever.py)
+                continue ;;
+            esac
             echo "=== $f ==="
-            python $f
+            python "$f"
           done
