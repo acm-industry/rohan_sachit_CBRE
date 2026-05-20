@@ -100,3 +100,4 @@ Output is deterministic modulo the documented LLM-provider noise floor
 | 2026-05-19T05:15:15Z | `33fc3bc` | 87.95 | 0 | baseline — fixed pipeline (issues #16/#19/#20/#21 + orchestrator) |
 | 2026-05-19T (run b)  | `7511166` | 88.30 | 0 | issue #63/#64 — trap-cascade HITL rule, `cascade_excludes=[waste_odor]`. hitl_f1 68.42 → 71.94 (+3.52), auto_resolution 85.88 (unchanged). Predictions: `eval_runs/dev_issue63.json`. |
 | 2026-05-19T (run c)  | `98b2c16` | 88.10 | 0 | issue #65 — phone-history fallback + profile-echo override (fields axis 88.0 → 91.0, +3.0; small LLM-noise dips on subcategory/risk). Predictions: `eval_runs/dev_issue65.json`. |
+| 2026-05-19T (run d)  | `8262a79` | 90.88 | 0 | stacked main: #68 + #69 + #70 all merged. clarif_f1 0.75→0.92, auto_res 85.9→97.7, hitl_f1 +3.0, fields +3.0, vendor +3.0. Predictions: `eval_runs/dev_stacked.json`. |
