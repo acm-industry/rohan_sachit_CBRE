@@ -10,11 +10,14 @@ trigger the validator gate to pause for human review.
 Output: `agent/data/derived/hitl_policy.json`. Schema:
 
     {
-      "rule_version": "v1",
+      "rule_version": "v2",
       "thresholds": {
         "high_audit_rate_pct": 15.0,
-        "trap_over_escalation_rate_pct": 10.0,
-        "low_confidence": 0.5
+        "trap_over_escalation_rate_pct": 15.0,
+        "low_confidence": 0.5,
+        "cascade_audit_rate_pct": 50.0,
+        "cascade_min_n": 5,
+        "cascade_excludes": ["waste_odor"]
       },
       "cells": {
         "<subcategory>": {
@@ -67,6 +70,35 @@ LOW_CONFIDENCE = 0.5
 # rather than per-cell because the simpler rule beat the cell-specific
 # variant on dev-set F1.
 HIGH_AUDIT_RATE_PCT = 15.0
+
+# Cascade rule (issues #63/#64): a subcategory is "trap-cascade" iff it
+# has at least one cell at HIGH or EMERGENCY with audit_rate >= the
+# cascade threshold AND n >= cascade_min_n. The validator gate (#16)
+# pauses any LOW/MEDIUM prediction of a trap-cascade subcategory — this
+# catches the under-classification trap rows (predicted LOW/MEDIUM but
+# truly HIGH/EMERGENCY) that the per-subcategory OER rule misses
+# (suspicious_person 12.8%, roof_leak 11.7%, malfunction 8.9% — all
+# under the 15% OER bar but with overwhelming audit evidence at higher
+# bands).
+CASCADE_AUDIT_RATE_PCT = 50.0
+CASCADE_MIN_N = 5
+
+# Dev-tuned override: subcategories that meet the cascade structural
+# criteria above but are EXCLUDED because the joint-axis sweep on
+# `eval_runs/dev_baseline.json` showed they cost more on
+# `auto_resolution` (10% weight) than they gain on `hitl_f1` (15%):
+#
+#   policy variant                                | hitl_f1 | auto% | composite contrib
+#   --------------------------------------------- | ------- | ----- | -----------------
+#   baseline (no cascade)                         |  0.684  | 85.9  | 18.851
+#   cells-rule (incl. waste_odor)                 |  0.706  | 76.5  | 18.247  (-0.60)
+#   cells-rule minus waste_odor (shipped)         |  0.719  | 85.9  | 19.380  (+0.53)
+#
+# waste_odor LOW (the dominant predicted cell) has cell audit_rate 5.2%
+# on n=248 — strong historical evidence of safety, consistent with the
+# 10/14 dev waste_odor LOW rows being auto-resolvable. Including it in
+# the cascade pauses those rows and loses ~9 pts on auto_resolution.
+CASCADE_EXCLUDES = ("waste_odor",)
 
 
 def derive_cells(historicals: list[dict]) -> dict:
@@ -197,11 +229,14 @@ def main(argv=None) -> int:
     cells = derive_cells(raw)
 
     policy = {
-        "rule_version": "v1",
+        "rule_version": "v2",
         "thresholds": {
             "high_audit_rate_pct": HIGH_AUDIT_RATE_PCT,
             "trap_over_escalation_rate_pct": TRAP_OVER_ESCALATION_RATE_PCT,
             "low_confidence": LOW_CONFIDENCE,
+            "cascade_audit_rate_pct": CASCADE_AUDIT_RATE_PCT,
+            "cascade_min_n": CASCADE_MIN_N,
+            "cascade_excludes": list(CASCADE_EXCLUDES),
         },
         "cells": cells,
     }

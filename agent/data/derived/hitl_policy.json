@@ -607,8 +607,13 @@
       }
     }
   },
-  "rule_version": "v1",
+  "rule_version": "v2",
   "thresholds": {
+    "cascade_audit_rate_pct": 50.0,
+    "cascade_excludes": [
+      "waste_odor"
+    ],
+    "cascade_min_n": 5,
     "high_audit_rate_pct": 15.0,
     "low_confidence": 0.5,
     "trap_over_escalation_rate_pct": 15.0

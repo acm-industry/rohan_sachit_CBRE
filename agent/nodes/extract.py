@@ -197,6 +197,8 @@ def extract(
         clarification trigger in #18).
     """
     profile = profiles.lookup(caller_phone)
+    if profile and profiles.is_stale(profile):
+        profile = None
     prompt = build_prompt(turns, profile)
 
     if llm is None:

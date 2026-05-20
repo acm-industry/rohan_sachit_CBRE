@@ -48,14 +48,13 @@ from agent.nodes.extract import Extraction
 
 # Tuned thresholds (dev-set sweep, see PR notes).
 SPARSE_FIRST_TURN_WORDS = 6
-SPARSE_TOTAL_WORDS = 24
+SPARSE_TOTAL_WORDS = 20
 
 # "Issue with X" patterns — caller uses category-level term as the
 # whole symptom rather than describing a specific failure.
 _GENERIC_OPENING_RX = re.compile(
     r"(?:there'?s an issue with|something(?:'s| is)? wrong with|"
-    r"having (?:a |an )?problem(?:s)? with|"
-    r"(?:the|our|my) [a-z\s]+(?:'s| is)? (?:doing something|being weird|not working|off))",
+    r"having (?:a |an )?problem(?:s)? with)",
     re.IGNORECASE,
 )
 

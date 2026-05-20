@@ -128,14 +128,28 @@ def test_hard_cues_keep_emergency_subcategory_at_emergency():
     assert r.band == "EMERGENCY"
 
 
-def test_hard_cues_promote_pipe_leak_to_emergency():
-    """pipe_leak: 43% MEDIUM, 46% HIGH, 11% EMERGENCY. The 11% is above the
-    5% threshold so EMERGENCY is in the cap. Two hard cues from base HIGH
-    push to EMERGENCY (HIGH+2 = beyond range, capped at observed max=EMERGENCY)."""
+def test_soft_cues_capped_at_high_on_routable_base():
+    """Soft cues (flooding, getting-worse, …) may push the band UP but
+    never beyond HIGH — only hard life-safety cues are permitted to
+    reach EMERGENCY. pipe_leak (base HIGH) + "flooding" (soft +1) now
+    stays at HIGH instead of cascading to EMERGENCY, which prevents
+    false-emergency dispatches on routable-base subcategories."""
     e = _extraction(urgency_cues=["flooding"])  # soft cue: +1
     r = assign_risk(e, "pipe_leak")
-    # base HIGH (rank 2) + 1 = 3 = EMERGENCY (within historical max)
+    assert r.band == "HIGH"
+    assert any("soft_cue:flooding" in reason for reason in r.reasons)
+
+
+def test_hard_cues_uncapped_can_promote_pipe_leak_to_emergency():
+    """The soft-cue cap is one-sided: hard life-safety cues (gas leak,
+    fire, trapped, …) remain uncapped, so a genuine emergency on a
+    routable base still promotes correctly. pipe_leak (base HIGH) +
+    "gas leak" (hard +2) → EMERGENCY (within pipe_leak's historical
+    max of 11% EMERGENCY)."""
+    e = _extraction(urgency_cues=["gas leak"])  # hard cue: +2
+    r = assign_risk(e, "pipe_leak")
     assert r.band == "EMERGENCY"
+    assert any("hard_cue:gas leak" in reason for reason in r.reasons)
 
 
 def test_soft_cues_bump_by_one():
