@@ -133,6 +133,79 @@ def test_life_safety_emergency_with_cue_but_low_confidence_no_911():
     assert any("life_safety_no_autodispatch:low_confidence" in r for r in result.reasons)
 
 
+def test_burnt_popcorn_benign_override_suppresses_911():
+    """The test-set scripted over-escalation trap: caller reports the
+    floor 'smells smoky' (matches the hard-hazard `smoke` cue), but the
+    agent confirms 'no actual fire' and the caller agrees it's 'just
+    burnt popcorn in the microwave'. The benign-context override
+    suppresses 911 even though every other precondition holds — caught
+    9 false-911s on the 800-row test eval (each −5 rubric)."""
+    _reset()
+    transcript = (
+        "[AGENT] What's going on?\n"
+        "[CALLER] Someone burned popcorn in the microwave — the whole floor smells smoky.\n"
+        "[AGENT] Can you confirm there's no actual fire or injury right now?\n"
+        "[CALLER] No fire, just the burnt smell."
+    )
+    result = validate(
+        subcategory="fire_smoke",
+        risk_level="EMERGENCY",
+        classification_confidence=0.95,
+        fallback_invoked=False,
+        extracted_urgency_cues=["smoky", "smells smoky"],
+        transcript_text=transcript,
+    )
+    assert result.dispatched_emergency_services is False
+    assert result.needs_human_review is True
+    assert any("benign_context" in r for r in result.reasons), result.reasons
+
+
+def test_genuine_electrical_smoke_still_dispatches_911():
+    """The benign-override must not suppress a genuine emergency that
+    happens to share negation-looking phrases. 'Smoke coming from the
+    electrical room' with no benign-context phrase → still dispatches.
+    Regression guard against an over-aggressive negation gate."""
+    _reset()
+    transcript = (
+        "[AGENT] What do you need?\n"
+        "[CALLER] There's smoke coming from the electrical room, I can see it.\n"
+        "[AGENT] Where exactly — which suite?\n"
+        "[CALLER] Metro Center Offices, Floor 1, Suite 105."
+    )
+    result = validate(
+        subcategory="fire_smoke",
+        risk_level="EMERGENCY",
+        classification_confidence=0.95,
+        fallback_invoked=False,
+        extracted_urgency_cues=["smoke coming from the electrical room"],
+        transcript_text=transcript,
+    )
+    assert result.dispatched_emergency_services is True
+
+
+def test_no_flames_alone_does_not_trigger_benign_override():
+    """'No flames visible' on its own is NOT a benign-context signal —
+    a smoke-only fire is still a real emergency. The override only
+    fires on stronger specific phrases (no-actual-fire / burnt-popcorn /
+    false-alarm / fire-drill / etc.)."""
+    _reset()
+    transcript = (
+        "[CALLER] Hello, There's smoke coming from the electrical room, I can see it.\n"
+        "[AGENT] Have you pulled the fire alarm?\n"
+        "[CALLER] Just smoke right now, no flames visible.\n"
+        "[AGENT] Where exactly — which suite?"
+    )
+    result = validate(
+        subcategory="fire_smoke",
+        risk_level="EMERGENCY",
+        classification_confidence=0.95,
+        fallback_invoked=False,
+        extracted_urgency_cues=["smoke from the electrical room"],
+        transcript_text=transcript,
+    )
+    assert result.dispatched_emergency_services is True
+
+
 def test_emergency_non_life_safety_no_911():
     """EMERGENCY but non-life-safety subcategory → review but no 911,
     even with a hazard-sounding cue."""

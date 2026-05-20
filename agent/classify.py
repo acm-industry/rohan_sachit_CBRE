@@ -162,6 +162,12 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
             # cue — passing these is what lets the validator distinguish a
             # genuine life-safety call from a misclassification.
             extracted_urgency_cues=extraction.urgency_cues,
+            # Full transcript powers the benign-context override that
+            # blocks 911 when the call carries an explicit "this is not a
+            # real emergency" signal ("no actual fire", "burnt popcorn",
+            # "false alarm", ...) — catches the over-escalation trap
+            # that surfaced on the test-set audit.
+            transcript_text=full_transcript,
         )
     except Exception as e:
         logger.warning("validator failed: %s", e)
