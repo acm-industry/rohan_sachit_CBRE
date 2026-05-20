@@ -25,6 +25,9 @@ _PROFILE_PATH = Path(__file__).resolve().parents[2] / "operational" / "caller_pr
 
 DEFAULT_STALE_DAYS = 180
 
+# Cache for the deterministic "now" reference (see `_reference_now`).
+_REFERENCE_NOW_CACHE: Optional[datetime] = None
+
 
 @dataclass(frozen=True)
 class Profile:
@@ -112,6 +115,38 @@ def lookup(phone: Optional[str], *, include_inactive: bool = False) -> Optional[
     return p
 
 
+def _reference_now() -> datetime:
+    """Deterministic "now" used by `is_stale` when no `now=` is injected.
+
+    Defined as the newest `last_verified_at` across the loaded profiles
+    — i.e. the data's notion of "the present", not the wall clock. This
+    keeps `classify()` reproducible across runs (issue #28): two
+    invocations on the same input never disagree on profile staleness
+    just because wall-clock advanced. A corpus refresh (regenerating
+    `operational/caller_profiles.json`) shifts the reference forward
+    automatically, mirroring the pattern in
+    `agent/nodes/vendor_select._catalog_now()`.
+
+    Falls back to wall-clock `datetime.now(tz=utc)` only when no
+    profiles are loaded (i.e. no data to derive a reference from).
+    """
+    global _REFERENCE_NOW_CACHE
+    if _REFERENCE_NOW_CACHE is None:
+        stamps = []
+        for p in _index().values():
+            if not p.last_verified_at:
+                continue
+            try:
+                dt = datetime.fromisoformat(p.last_verified_at)
+            except ValueError:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            stamps.append(dt)
+        _REFERENCE_NOW_CACHE = max(stamps) if stamps else datetime.now(timezone.utc)
+    return _REFERENCE_NOW_CACHE
+
+
 def is_stale(profile: Profile,
              *,
              max_age_days: int = DEFAULT_STALE_DAYS,
@@ -120,6 +155,10 @@ def is_stale(profile: Profile,
 
     Treats a missing or unparseable `last_verified_at` as stale — the
     agent should not trust a profile we can't date.
+
+    When `now=None`, uses the deterministic data-derived reference
+    (`_reference_now()`) rather than `datetime.now()` so `classify()`
+    stays reproducible across runs per issue #28.
     """
     if not profile.last_verified_at:
         return True
@@ -129,7 +168,16 @@ def is_stale(profile: Profile,
         return True
     if verified.tzinfo is None:
         verified = verified.replace(tzinfo=timezone.utc)
-    now = now or datetime.now(timezone.utc)
+    if now is None:
+        now = _reference_now()
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     return (now - verified).days > max_age_days
+
+
+def _reset_caches_for_tests() -> None:
+    """Drop the in-process caches so tests can swap data files or reset
+    the deterministic reference between cases."""
+    global _INDEX_CACHE, _REFERENCE_NOW_CACHE
+    _INDEX_CACHE = None
+    _REFERENCE_NOW_CACHE = None

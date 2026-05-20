@@ -19,14 +19,19 @@ test-contract:  ## Run the schema-conformance canary (issue #2). Required to pas
 	$(VENV_PY) tests/test_contract.py
 
 test-fast:  ## Run every test that doesn't need OPENAI_API_KEY. Should be < 30s on a laptop.
-	@for f in tests/test_audit.py tests/test_buildings.py tests/test_clarify.py tests/test_contract.py \
-	          tests/test_hitl.py tests/test_profiles.py tests/test_risk.py tests/test_risk_assignment.py \
-	          tests/test_vendors.py; do \
+	@# Globs tests/test_*.py and skips the LLM-backed / RAG-store suites
+	@# (test_classify, test_extract, test_rag_build, test_rag_retriever).
+	@# test_contract is the schema-canary; runs first and short-circuits
+	@# if it fails.
+	@for f in tests/test_*.py; do \
+		case "$$(basename $$f)" in \
+		  test_classify.py|test_extract.py|test_rag_build.py|test_rag_retriever.py) continue ;; \
+		esac; \
 		echo "=== $$f ==="; $(VENV_PY) $$f || exit 1; \
 	done
 
 test-llm:  ## Run the real-OpenAI E2E tests. Requires OPENAI_API_KEY in .env.
-	@for f in tests/test_extract.py tests/test_classify.py; do \
+	@for f in tests/test_classify.py tests/test_extract.py tests/test_rag_build.py tests/test_rag_retriever.py; do \
 		echo "=== $$f ==="; $(VENV_PY) $$f || exit 1; \
 	done
 
