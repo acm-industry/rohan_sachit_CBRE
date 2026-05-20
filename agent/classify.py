@@ -30,6 +30,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from agent.data import profiles
 from agent.nodes.extract import Extraction, extract
 from agent.nodes.classify import Classification, classify as classify_call
+from agent.security import SecurityScan, scan_turns, sanitize_for_storage, validate_extraction_output
 from agent.nodes.risk import RiskAssignment, assign_risk
 from agent.nodes.validator import ValidatorResult, validate
 from agent.nodes.location import ResolvedLocation, reconcile
@@ -87,12 +88,26 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     """
     full_transcript = _flatten(turns)
 
+    # ── Step 0: Security scan ───────────────────────────────────────
+    security_scan = scan_turns(turns)
+    if security_scan.any_threat:
+        logger.warning(
+            "security scan flagged: %s", security_scan.matched_patterns
+        )
+
     # ── Step 1: Extract ──────────────────────────────────────────────
     try:
         extraction = extract(turns, caller_phone)
     except Exception as e:
         logger.error("extraction failed: %s", e)
         return _safe_fallback(turns, f"extraction: {e}")
+
+    # Post-extraction output validation (T6/T3 defense)
+    output_warnings = validate_extraction_output(
+        extraction.building_name, extraction.floor, caller_phone, turns
+    )
+    if output_warnings:
+        logger.warning("extraction output anomaly: %s", output_warnings)
 
     # ── Step 2: Classify ─────────────────────────────────────────────
     try:
@@ -178,6 +193,17 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
             reasons=[f"validator_error:{e}"],
         )
 
+    # Security override: if injection detected, always pause for human
+    # review and NEVER auto-dispatch 911 (T6 defense — attacker could
+    # fabricate urgency cues to trigger autonomous emergency dispatch).
+    if security_scan.any_threat:
+        validator_result = replace(
+            validator_result,
+            needs_human_review=True,
+            dispatched_emergency_services=False,
+            reasons=(*validator_result.reasons, *security_scan.reasons),
+        )
+
     # ── Step 6: Vendor selection ─────────────────────────────────────
     try:
         vendor = select_vendor(
@@ -252,8 +278,12 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
         retrieved_record_ids=list(classification.retrieved_record_ids),
     )
 
+    # Sanitize transcript before storing in trainer log (T1 defense —
+    # prevents injection payloads from persisting into fine-tuning data).
+    safe_transcript = sanitize_for_storage(full_transcript) if security_scan.any_threat else full_transcript
+
     trainer_log = assemble_trainer_log(
-        full_transcript=full_transcript,
+        full_transcript=safe_transcript,
         ai_prediction=ai_pred,
         human_override=None,
         final_decision=None,
