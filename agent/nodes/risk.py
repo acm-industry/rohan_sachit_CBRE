@@ -183,10 +183,16 @@ def assign_risk(
     rank = RISK_LEVEL_RANK[base]
 
     # Modifier 1: caller's verbatim urgency cues.
+    # Soft cues may push up to HIGH but never to EMERGENCY — only hard
+    # (life-safety) cues can reach EMERGENCY. This prevents "flooding"
+    # on a pipe_leak (base=HIGH) from triggering a false emergency.
     for cue in extraction.urgency_cues:
         bump, tier = _classify_cue(cue)
         if bump > 0:
-            rank += bump
+            if tier == "soft":
+                rank = min(rank + bump, RISK_LEVEL_RANK["HIGH"])
+            else:
+                rank += bump
             reasons.append(f"{tier}_cue:{cue}")
 
     # Modifier 2: sensitive building types (medical / residential).
