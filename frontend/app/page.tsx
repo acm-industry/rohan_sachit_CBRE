@@ -161,6 +161,12 @@ export default function HomePage() {
         busy={busy}
       />
 
+      <PipelineDiagram
+        stages={state.stages}
+        selectedStage={selectedStage}
+        onSelectStage={setSelectedStage}
+      />
+
       <section className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6">
         <TranscriptTicker turns={state.transcript} />
         <StageDetailPanel
@@ -168,12 +174,6 @@ export default function HomePage() {
           stageState={selectedStage ? state.stages[selectedStage] : undefined}
         />
       </section>
-
-      <PipelineDiagram
-        stages={state.stages}
-        selectedStage={selectedStage}
-        onSelectStage={setSelectedStage}
-      />
 
       <TrainerLogInspector trainerLog={state.trainer_log} />
 

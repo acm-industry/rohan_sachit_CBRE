@@ -168,7 +168,7 @@ export function VoiceCapture({
           "backend voice not available — got stub response (set DEEPGRAM_API_KEY + ELEVENLABS_API_KEY in backend .env)"
         );
       } else {
-        setStatus("audio uploaded — watch the pipeline above");
+        setStatus("audio uploaded — watch the pipeline below");
       }
     } catch (err) {
       setStatus(`upload failed: ${(err as Error).message}`);
