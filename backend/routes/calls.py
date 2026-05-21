@@ -115,6 +115,33 @@ async def _speak_summary(bus: CallBus, summary: str) -> None:
     await _speak_text(bus, speakable)
 
 
+_AGENT_GREETING = "CBRE maintenance, what's going on?"
+
+
+async def _speak_greeting(bus: CallBus) -> None:
+    """Emit the agent greeting transcript + TTS audio on the bus.
+
+    Called from /api/calls/start in voice mode. The caller hears this
+    when their SSE subscription opens (typically ~50ms after start_call
+    returns), well before they begin speaking.
+    """
+    # Brief pause so the frontend has time to subscribe to the SSE stream
+    # before we publish — events on the queue are still delivered if they
+    # land before the GET, but pacing them after subscription keeps the
+    # audio playback synchronized with the visible transcript line.
+    await asyncio.sleep(0.25)
+    await bus.publish(
+        {
+            "call_id": bus.call_id,
+            "stage": "transcript",
+            "status": "complete",
+            "timing_ms": 0,
+            "payload": {"speaker": "agent", "text": _AGENT_GREETING},
+        }
+    )
+    await _speak_text(bus, _AGENT_GREETING)
+
+
 async def _speak_text(bus: CallBus, text: str) -> None:
     """Synthesize `text` to MP3 via ElevenLabs and publish a voice_response.
 
@@ -188,10 +215,18 @@ async def start_call(body: StartCallBody, request: Request) -> Dict[str, str]:
     if body.mode == "voice":
         # Voice mode: create the bus now; pipeline kicks off in /audio
         # once the caller posts the audio blob. We stash the phone so
-        # the audio endpoint can pick it up.
+        # the audio endpoint can pick it up. Also fire the agent's
+        # greeting on the bus as a background task — the frontend opens
+        # its SSE subscription immediately after this returns, so the
+        # caller hears "CBRE maintenance, what's going on?" when they
+        # connect, *before* they start speaking (like a real call line).
         bus = await reg.create(call_id)
         bus.resume_payload = None  # unused for voice; kept for symmetry
         request.app.state.voice_phone[call_id] = body.caller_phone
+
+        if VOICE_AVAILABLE:
+            asyncio.create_task(_speak_greeting(bus))
+
         return {"call_id": call_id}
 
     raise HTTPException(400, f"unknown mode: {body.mode}")
@@ -268,11 +303,13 @@ async def push_audio(call_id: str, request: Request):
 
     caller_phone = request.app.state.voice_phone.pop(call_id, None)
 
-    # Emit each turn as a regular stage event with stage="transcript".
-    # The frontend's onEvent handler dispatches these into the ticker.
-    # Using the regular stage channel (rather than a named SSE event) is
-    # more robust against EventSource timing edge cases.
+    # Emit caller turn(s) as transcript stage events. We skip the leading
+    # agent greeting turn here because /api/calls/start already published
+    # it (with TTS) when the SSE subscription opened — re-emitting would
+    # duplicate the line in the ticker.
     for turn in turns:
+        if turn.get("speaker") == "agent" and turn.get("text") == _AGENT_GREETING:
+            continue
         await bus.publish(
             {
                 "call_id": call_id,
@@ -295,18 +332,6 @@ async def push_audio(call_id: str, request: Request):
             "payload": {"turns": turns, "voice_available": VOICE_AVAILABLE},
         }
     )
-
-    # Speak the agent's greeting aloud (the first agent turn we synthesized
-    # in session.transcribe()). Fire it as a background task so the
-    # ElevenLabs HTTP call doesn't block the pipeline kickoff — the
-    # voice_response event will land on the SSE stream when ready.
-    greeting = (
-        turns[0]["text"]
-        if turns and turns[0].get("speaker") == "agent"
-        else None
-    )
-    if greeting and VOICE_AVAILABLE:
-        asyncio.create_task(_speak_text(bus, greeting))
 
     # speak_response=True wires the agent's TTS reply at end of pipeline.
     asyncio.create_task(

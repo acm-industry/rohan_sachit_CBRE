@@ -29,6 +29,7 @@ type Props = {
 export function VoiceCapture({ onCallStart, busy }: Props) {
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState<string>("idle");
+  const callIdRef = useRef<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -37,6 +38,29 @@ export function VoiceCapture({ onCallStart, busy }: Props) {
 
   const start = async () => {
     if (busy) return;
+    setStatus("starting call...");
+
+    // 1. Tell the backend to spin up a call_id immediately. The
+    //    backend's voice-mode start_call kicks off the agent greeting
+    //    (transcript + TTS audio) as a background task — the audio
+    //    lands on the SSE stream within a second.
+    let call_id: string;
+    try {
+      const resp = await startCall({ mode: "voice" });
+      call_id = resp.call_id;
+      callIdRef.current = call_id;
+      // 2. Subscribe to SSE so we receive the greeting and any later
+      //    pipeline events. onCallStart triggers the page's
+      //    subscribeToActiveCall.
+      onCallStart(call_id);
+    } catch (err) {
+      setStatus(`failed to start call: ${(err as Error).message}`);
+      return;
+    }
+
+    // 3. Request mic + start capturing. The greeting will play through
+    //    the speakers shortly after; the caller speaks into the mic
+    //    when ready.
     setStatus("requesting mic...");
     let stream: MediaStream;
     try {
@@ -77,7 +101,7 @@ export function VoiceCapture({ onCallStart, busy }: Props) {
     source.connect(processor);
     processor.connect(ctx.destination);
     setRecording(true);
-    setStatus("🔴 recording — speak now");
+    setStatus("🔴 call open — speak when ready, click stop when done");
   };
 
   const stop = async () => {
@@ -91,11 +115,14 @@ export function VoiceCapture({ onCallStart, busy }: Props) {
     processorRef.current = null;
     streamRef.current = null;
 
+    const call_id = callIdRef.current;
+    callIdRef.current = null;
+
     // Concatenate Int16 chunks into a single buffer.
     const total = chunksRef.current.reduce((sum, c) => sum + c.length, 0);
-    if (total === 0) {
+    if (total === 0 || !call_id) {
       setRecording(false);
-      setStatus("no audio captured");
+      setStatus(call_id ? "no audio captured" : "no active call");
       return;
     }
     const merged = new Int16Array(total);
@@ -108,14 +135,9 @@ export function VoiceCapture({ onCallStart, busy }: Props) {
 
     const blob = new Blob([merged.buffer], { type: "application/octet-stream" });
     const seconds = total / TARGET_SAMPLE_RATE;
-    setStatus(`captured ${seconds.toFixed(1)}s of PCM — starting voice call...`);
+    setStatus(`captured ${seconds.toFixed(1)}s — uploading...`);
 
     try {
-      // Start a voice-mode call; then upload audio. Backend transcribes
-      // and kicks off the pipeline; SSE will surface stages to the UI.
-      const { call_id } = await startCall({ mode: "voice" });
-      onCallStart(call_id);
-      setStatus(`uploading audio to ${call_id}...`);
       const result = await pushAudio(call_id, blob);
       if (!result.voice_available) {
         setStatus(
