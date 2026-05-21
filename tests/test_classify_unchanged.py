@@ -45,7 +45,7 @@ from agent.nodes.vendor_select import VendorSelection  # noqa: E402
 # ─── Layer 1: source pin ───────────────────────────────────────────────
 
 EXPECTED_CLASSIFY_HASH = (
-    "959d79c2de66f8e9a18e0d6b39ba90360fd22ed98e61826fd6efcbba2b693223"
+    "db5314ef5c303d13e7879a23bf99ba668d99d1198ca4f62ab43ddedac385f4be"
 )
 
 
@@ -159,6 +159,11 @@ def test_classify_mocked_snapshot():
     with ExitStack() as stack:
         stack.enter_context(patch.object(orchestrator, "extract",
                                          return_value=_good_extraction()))
+        # Issue #27: retrieve is now called by the orchestrator (lifted out
+        # of classify_call so it can be timed separately). Patch to an empty
+        # list — classify_call is also mocked, so it never reads from records.
+        stack.enter_context(patch.object(orchestrator, "retrieve",
+                                         return_value=[]))
         stack.enter_context(patch.object(orchestrator, "classify_call",
                                          return_value=_good_classification()))
         stack.enter_context(patch.object(orchestrator, "reconcile",
