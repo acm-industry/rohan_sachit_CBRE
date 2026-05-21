@@ -1,0 +1,140 @@
+/* print.css — styling for the design_doc PDF render */
+
+@page {
+  size: Letter;
+  margin: 0.7in 0.75in 0.85in 0.75in;
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font: 9pt "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #888;
+  }
+  @bottom-left {
+    content: "CBRE HITL Call-Intake Agent — Design Doc";
+    font: 9pt "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #888;
+  }
+}
+
+html { font-size: 10.5pt; }
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: #1c1c1c;
+  line-height: 1.42;
+  max-width: none;
+  margin: 0;
+}
+
+/* Title page — pandoc emits the metadata title as <h1 class="title"> */
+header#title-block-header { margin-bottom: 1em; }
+h1.title {
+  font-size: 22pt;
+  margin: 0 0 0.6em 0;
+  padding-bottom: 0.4em;
+  border-bottom: 2px solid #2b3a55;
+  page-break-after: avoid;
+}
+
+/* Headings */
+h1, h2, h3, h4 {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: #2b3a55;
+  page-break-after: avoid;
+  page-break-inside: avoid;
+}
+h1 { font-size: 19pt; margin: 1.6em 0 0.4em; border-bottom: 1.5px solid #2b3a55; padding-bottom: 0.2em; }
+h2 { font-size: 15pt; margin: 1.4em 0 0.35em; border-bottom: 1px solid #cbd5e1; padding-bottom: 0.15em; }
+h3 { font-size: 12.5pt; margin: 1.1em 0 0.3em; }
+h4 { font-size: 11pt; margin: 0.9em 0 0.25em; color: #44546a; }
+/* Section starts: §1 ... §11 get a fresh page so chapters don't bleed across pages awkwardly. */
+h2 { page-break-before: always; }
+h2:first-of-type, h1 + h2 { page-break-before: avoid; }
+
+/* Paragraphs */
+p { margin: 0.4em 0 0.55em; orphans: 3; widows: 3; }
+
+/* Blockquote (Status banner) */
+blockquote {
+  margin: 0.8em 0 1.2em;
+  padding: 0.55em 0.85em;
+  background: #f1f5f9;
+  border-left: 4px solid #2b3a55;
+  color: #1c1c1c;
+  font-size: 10pt;
+}
+blockquote p { margin: 0.15em 0; }
+
+/* Tables — compact, no overflow */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0 0.9em;
+  font-size: 9pt;
+  table-layout: fixed;
+  page-break-inside: avoid;
+}
+th, td {
+  border: 0.7px solid #cbd5e1;
+  padding: 4px 6px;
+  vertical-align: top;
+  text-align: left;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+thead th {
+  background: #e2e8f0;
+  color: #1c2434;
+  font-weight: 600;
+}
+tbody tr:nth-child(even) { background: #f8fafc; }
+
+/* Inline code + fenced code blocks */
+code {
+  font-family: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 8.8pt;
+  background: #eef2f6;
+  padding: 0.5px 3px;
+  border-radius: 2px;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+pre {
+  background: #f5f7fa;
+  border: 0.7px solid #d4dbe4;
+  border-radius: 3px;
+  padding: 7px 9px;
+  font-size: 8.6pt;
+  line-height: 1.35;
+  white-space: pre-wrap;          /* wrap long lines so code doesn't run off the page */
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  page-break-inside: avoid;
+}
+pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Lists */
+ul, ol { margin: 0.35em 0 0.65em 1.4em; padding: 0; }
+li { margin: 0.15em 0; }
+li p { margin: 0.15em 0; }
+
+/* Diagrams — embed at full width, allow page break around them */
+img.diagram, p > img {
+  display: block;
+  margin: 0.5em auto;
+  max-width: 100%;
+  max-height: 5.5in;
+  page-break-inside: avoid;
+}
+
+/* Links — keep underline color subtle, don't print the URL after */
+a { color: #2b3a55; text-decoration: none; border-bottom: 0.5px dotted #6b7a99; }
+a[href]:after { content: ""; }
+
+/* Horizontal rules — invisible; we use page breaks per chapter instead. */
+hr { display: none; }
+
+/* Last-updated footer paragraph (italic at end of doc) */
+p em:only-child { color: #555; }

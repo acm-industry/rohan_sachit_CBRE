@@ -1,9 +1,10 @@
 # Design Document — CBRE HITL Call-Intake Agent
 
-> **Status:** Submission v1 (issues #29 + #30). §9 (error analysis) is
-> populated from the committed dev baselines including the post-iteration
-> trajectory (§9.7). Submission `predictions.json` ships at the repo root,
-> tagged `submission-v1`. Everything describes shipped code.
+> **Status:** Submission v1 (issues #29 + #30), dev composite **91.94 / 100**
+> with **0 false-911** on the 200-row labelled dev set (tag `submission-v1`,
+> agent SHA `c6b9255`). §9 (error analysis) is populated from the committed
+> dev baselines including the post-iteration trajectory (§9.7). Submission
+> `predictions.json` ships at the repo root. Everything describes shipped code.
 
 ## Table of contents
 
@@ -83,6 +84,14 @@ LLM-backed nodes: 1, 2, (and risk-modifier weighting in 4 if/when it's
 LLM-graded). The rest are deterministic over the structured outputs of
 the LLM-backed nodes — this is what keeps the per-call latency budget
 achievable.
+
+Per-stage latency is instrumented in-pipeline: each node is wrapped by
+`_time_stage` (PR #79) which records wall-clock `timing_ms` into the
+graph state and onto a sibling entrypoint `agent.classify:classify_with_events`
+used by the live-demo backend (SSE per-stage events). The submission
+`classify()` is byte-identical to `submission-v1` — a source-hash pin in
+`tests/test_classify_unchanged.py` fails loudly if the function body
+drifts — so the instrumentation surface is additive, not invasive.
 
 ---
 
@@ -302,6 +311,23 @@ bit is preserved as the AI's recommendation; the auto-approve only
 affects the *resume* path, not the gate's output. This keeps the
 rubric's HITL-F1 axis grounded in what the agent *decided*, not what a
 hypothetical reviewer would have done.
+
+### 4.7 Security hardening (prompt injection + output sanitization)
+
+PR #73 (`agent/security.py`) adds an OWASP-aligned containment layer that
+treats every caller turn as untrusted input. A pre-LLM scan flags prompt
+injection, role-hijack, and data-exfiltration patterns (T6 / T2 / T3);
+agent turns are trusted and not scanned, and legitimate urgency language
+("fire", "trapped", "flooding") is explicitly preserved so the safety
+path is never weakened by the security layer. On any flag, the validator
+gate is overridden to **force `needs_human_review=True` and block
+autonomous 911 dispatch**, so a malicious transcript cannot autonomously
+trigger emergency services. A post-LLM validator catches cross-caller
+data leakage from extracted fields, and the trainer log transcript is
+sanitized on flagged calls only (T1 memory poisoning) so downstream
+fine-tuning corpora aren't poisoned. The extract and classify prompts
+carry SECURITY preambles plus `===UNTRUSTED DIALOGUE===` delimiters as
+defense-in-depth.
 
 ---
 
