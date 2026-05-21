@@ -55,6 +55,16 @@ function realSubscribeToCall(call_id: string, handlers: SseHandlers) {
   );
 }
 
+async function realPushAudio(call_id: string, audio: Blob): Promise<{ ok: boolean; voice_available: boolean }> {
+  const res = await fetch(`${BACKEND_URL}/api/calls/${call_id}/audio`, {
+    method: "POST",
+    headers: { "content-type": "application/octet-stream" },
+    body: audio,
+  });
+  if (!res.ok) throw new Error(`POST audio -> ${res.status}`);
+  return res.json();
+}
+
 // ───────────────────────── Fake backend ─────────────────────────
 // Set NEXT_PUBLIC_USE_FAKE_BACKEND=1 to use in-browser scripted demos.
 
@@ -265,6 +275,11 @@ async function fakeSubmitReview(
   return { accepted: true };
 }
 
+async function fakePushAudio(_call_id: string, _audio: Blob): Promise<{ ok: boolean; voice_available: boolean }> {
+  await tinyDelay();
+  return { ok: true, voice_available: false };
+}
+
 function fakeSubscribeToCall(call_id: string, handlers: SseHandlers) {
   // call_id is `fake-call-{n}-{transcript_id}`; transcript_id is everything after the second hyphen.
   const transcript_id = call_id.split("-").slice(3).join("-") || "fake-routine";
@@ -287,3 +302,4 @@ export const listTranscripts = USE_FAKE_BACKEND ? fakeListTranscripts : realList
 export const startCall = USE_FAKE_BACKEND ? fakeStartCall : realStartCall;
 export const submitReview = USE_FAKE_BACKEND ? fakeSubmitReview : realSubmitReview;
 export const subscribeToCall = USE_FAKE_BACKEND ? fakeSubscribeToCall : realSubscribeToCall;
+export const pushAudio = USE_FAKE_BACKEND ? fakePushAudio : realPushAudio;

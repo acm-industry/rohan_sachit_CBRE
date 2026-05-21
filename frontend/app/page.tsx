@@ -8,6 +8,7 @@ import PipelineDiagram from "@/components/PipelineDiagram";
 import StageDetailPanel from "@/components/StageDetailPanel";
 import ValidatorModal from "@/components/ValidatorModal";
 import TrainerLogInspector from "@/components/TrainerLogInspector";
+import { VoiceCapture } from "@/components/VoiceCapture";
 import { startCall, submitReview, subscribeToCall } from "@/lib/api";
 import { callReducer, initialCallState } from "@/lib/reducer";
 import type { Stage } from "@/lib/types";
@@ -25,29 +26,40 @@ export default function HomePage() {
     [],
   );
 
+  const subscribeToActiveCall = useCallback((call_id: string) => {
+    unsubscribeRef.current?.();
+    dispatch({ type: "reset", call_id });
+    setSelectedStage(null);
+    unsubscribeRef.current = subscribeToCall(call_id, {
+      onEvent: (event) => dispatch({ type: "event", event }),
+      onTranscript: ({ speaker, text }) =>
+        dispatch({ type: "transcript_chunk", speaker, text }),
+      onError: (err) => {
+        console.error("SSE error", err);
+      },
+      onClose: () => {
+        // stream closed; nothing else to do
+      },
+    });
+  }, []);
+
   const onStart = useCallback(async (transcript_id: string) => {
     if (busy) return;
     setBusy(true);
     try {
-      unsubscribeRef.current?.();
       const { call_id } = await startCall({ mode: "canned", transcript_id });
-      dispatch({ type: "reset", call_id });
-      setSelectedStage(null);
-      unsubscribeRef.current = subscribeToCall(call_id, {
-        onEvent: (event) => dispatch({ type: "event", event }),
-        onTranscript: ({ speaker, text }) =>
-          dispatch({ type: "transcript_chunk", speaker, text }),
-        onError: (err) => {
-          console.error("SSE error", err);
-        },
-        onClose: () => {
-          // stream closed; nothing else to do
-        },
-      });
+      subscribeToActiveCall(call_id);
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, subscribeToActiveCall]);
+
+  const onVoiceCallStart = useCallback(
+    (call_id: string) => {
+      subscribeToActiveCall(call_id);
+    },
+    [subscribeToActiveCall],
+  );
 
   const onApprove = useCallback(async () => {
     if (!state.call_id) return;
@@ -76,6 +88,8 @@ export default function HomePage() {
         disabled={busy}
         activeCallId={state.call_id || null}
       />
+
+      <VoiceCapture onCallStart={onVoiceCallStart} busy={busy} />
 
       <section className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6">
         <TranscriptTicker turns={state.transcript} />
