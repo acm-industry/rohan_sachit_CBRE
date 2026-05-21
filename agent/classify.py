@@ -24,12 +24,18 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import contextmanager
 from dataclasses import replace
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, Union
 
 from agent.data import profiles
 from agent.nodes.extract import Extraction, extract
-from agent.nodes.classify import Classification, classify as classify_call
+from agent.nodes.classify import (
+    Classification,
+    DEFAULT_K,
+    _build_query,
+    classify as classify_call,
+)
 from agent.security import SecurityScan, scan_turns, sanitize_for_storage, validate_extraction_output
 from agent.nodes.risk import RiskAssignment, assign_risk
 from agent.nodes.validator import ValidatorResult, validate
@@ -38,8 +44,44 @@ from agent.nodes.vendor_select import VendorSelection, select_vendor
 from agent.nodes.clarify import ClarificationDecision, needs_clarification
 from agent.nodes.summary import generate_summary
 from agent.nodes.trainer_log import assemble_trainer_log, build_ai_prediction
+from agent.rag.retriever import retrieve
 
 logger = logging.getLogger(__name__)
+
+
+# Per-stage labels surfaced in trainer_log.ai_prediction.latency_ms.
+# Pinned (rather than read off the dict at runtime) so a missing stage —
+# e.g. a node short-circuited by a soft-degrade path — still shows up as
+# 0.0 in the breakdown instead of silently dropping out.
+STAGE_NAMES: tuple[str, ...] = (
+    "extract",
+    "retrieve",
+    "classify",
+    "location",
+    "risk",
+    "validate",
+    "vendor",
+    "clarify",
+    "summary",
+    "total",
+)
+
+
+@contextmanager
+def _time_stage(timings: Dict[str, float], name: str) -> Iterator[None]:
+    """Record wall-clock elapsed (ms) for the wrapped block under `name`.
+
+    Uses perf_counter for monotonic high-resolution timing. The timing is
+    written even if the wrapped block raises, so fault-isolation paths
+    that catch the exception downstream still get an honest cost recorded
+    for the failing stage (rather than the failure costing 0ms in the
+    breakdown).
+    """
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        timings[name] = round((time.perf_counter() - t0) * 1000.0, 3)
 
 
 def _flatten(turns: List[dict]) -> str:
@@ -49,8 +91,19 @@ def _flatten(turns: List[dict]) -> str:
     )
 
 
-def _safe_fallback(turns: List[dict], error: str) -> Dict[str, Any]:
-    """Return a safe prediction on pipeline failure — avoids false-911."""
+def _safe_fallback(
+    turns: List[dict],
+    error: str,
+    timings: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    """Return a safe prediction on pipeline failure — avoids false-911.
+
+    Contract: `ai_prediction.latency_ms` is ALWAYS emitted as a
+    fully-shaped dict keyed by STAGE_NAMES, with 0.0 for any stage that
+    didn't run (or for every stage when timings was never threaded in).
+    Downstream consumers can assume the key is present and shape is
+    fixed.
+    """
     full_transcript = _flatten(turns)
     # (ELEVATOR, minor_issue) is the only minor_issue pair in the canonical
     # taxonomy. modal_risk in the derived table is LOW; we hold to MEDIUM
@@ -69,13 +122,16 @@ def _safe_fallback(turns: List[dict], error: str) -> Dict[str, Any]:
         "dispatched_emergency_services": False,
         "call_summary": f"Pipeline error: {error}. Escalated to human reviewer.",
     }
+    ai_pred = base.copy()
+    src = timings or {}
+    ai_pred["latency_ms"] = {name: src.get(name, 0.0) for name in STAGE_NAMES}
     return {
         **base,
         "trainer_log": {
             "full_transcript": full_transcript,
-            "ai_prediction": base.copy(),
+            "ai_prediction": ai_pred,
             "human_override": None,
-            "final_decision": base.copy(),
+            "final_decision": ai_pred.copy(),
         },
     }
 
@@ -88,6 +144,9 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     """
     full_transcript = _flatten(turns)
 
+    timings: Dict[str, float] = {}
+    _t_total_start = time.perf_counter()
+
     # ── Step 0: Security scan ───────────────────────────────────────
     security_scan = scan_turns(turns)
     if security_scan.any_threat:
@@ -97,10 +156,12 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
 
     # ── Step 1: Extract ──────────────────────────────────────────────
     try:
-        extraction = extract(turns, caller_phone)
+        with _time_stage(timings, "extract"):
+            extraction = extract(turns, caller_phone)
     except Exception as e:
+        timings["total"] = round((time.perf_counter() - _t_total_start) * 1000.0, 3)
         logger.error("extraction failed: %s", e)
-        return _safe_fallback(turns, f"extraction: {e}")
+        return _safe_fallback(turns, f"extraction: {e}", timings=timings)
 
     # Post-extraction output validation (T6/T3 defense)
     output_warnings = validate_extraction_output(
@@ -109,12 +170,21 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     if output_warnings:
         logger.warning("extraction output anomaly: %s", output_warnings)
 
-    # ── Step 2: Classify ─────────────────────────────────────────────
+    # ── Step 2: Retrieve + Classify ──────────────────────────────────
+    # Lifted retrieval out of the classifier node so the embedding/index
+    # cost (chroma roundtrip) is timed separately from the LLM call.
+    # Without this split, "classify" lumps the two together and we can't
+    # see which one is the dominant cost on a slow call.
     try:
-        classification = classify_call(extraction)
+        with _time_stage(timings, "retrieve"):
+            query = _build_query(extraction)
+            records = retrieve(query, k=DEFAULT_K) if query else []
+        with _time_stage(timings, "classify"):
+            classification = classify_call(extraction, records=records)
     except Exception as e:
+        timings["total"] = round((time.perf_counter() - _t_total_start) * 1000.0, 3)
         logger.error("classification failed: %s", e)
-        return _safe_fallback(turns, f"classification: {e}")
+        return _safe_fallback(turns, f"classification: {e}", timings=timings)
 
     category = classification.category_str
     subcategory = classification.subcategory_str
@@ -125,17 +195,18 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     # ── Step 3: Location ─────────────────────────────────────────────
     profile = profiles.lookup(caller_phone)
     try:
-        location = reconcile(
-            extracted_building_name=extraction.building_name,
-            extracted_floor=extraction.floor,
-            building_confidence=extraction.confidence.building_name,
-            floor_confidence=extraction.confidence.floor,
-            profile=profile,
-            # Issue #65: phone history outranks the (possibly stale)
-            # static profile when the historicals are confidently
-            # concentrated on a single building for this phone.
-            caller_phone=caller_phone,
-        )
+        with _time_stage(timings, "location"):
+            location = reconcile(
+                extracted_building_name=extraction.building_name,
+                extracted_floor=extraction.floor,
+                building_confidence=extraction.confidence.building_name,
+                floor_confidence=extraction.confidence.floor,
+                profile=profile,
+                # Issue #65: phone history outranks the (possibly stale)
+                # static profile when the historicals are confidently
+                # concentrated on a single building for this phone.
+                caller_phone=caller_phone,
+            )
     except Exception as e:
         logger.warning("location reconciliation failed: %s", e)
         location = ResolvedLocation(
@@ -151,16 +222,18 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
 
     # ── Step 4: Risk ─────────────────────────────────────────────────
     try:
-        risk = assign_risk(
-            extraction,
-            subcategory,
-            building_type=location.building_type,
-            after_hours=False,
-            classification_confidence=min_confidence,
-        )
+        with _time_stage(timings, "risk"):
+            risk = assign_risk(
+                extraction,
+                subcategory,
+                building_type=location.building_type,
+                after_hours=False,
+                classification_confidence=min_confidence,
+            )
     except Exception as e:
+        timings["total"] = round((time.perf_counter() - _t_total_start) * 1000.0, 3)
         logger.error("risk assignment failed: %s", e)
-        return _safe_fallback(turns, f"risk: {e}")
+        return _safe_fallback(turns, f"risk: {e}", timings=timings)
 
     risk_level = risk.band
     is_emergency = risk_level == "EMERGENCY"
@@ -169,22 +242,23 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     # H2: read the structured flag instead of substring-matching reasoning.
     fallback_invoked = classification.is_fallback
     try:
-        validator_result = validate(
-            subcategory=subcategory,
-            risk_level=risk_level,
-            classification_confidence=min_confidence,
-            fallback_invoked=fallback_invoked,
-            # A 911 dispatch additionally requires a real extracted hazard
-            # cue — passing these is what lets the validator distinguish a
-            # genuine life-safety call from a misclassification.
-            extracted_urgency_cues=extraction.urgency_cues,
-            # Full transcript powers the benign-context override that
-            # blocks 911 when the call carries an explicit "this is not a
-            # real emergency" signal ("no actual fire", "burnt popcorn",
-            # "false alarm", ...) — catches the over-escalation trap
-            # that surfaced on the test-set audit.
-            transcript_text=full_transcript,
-        )
+        with _time_stage(timings, "validate"):
+            validator_result = validate(
+                subcategory=subcategory,
+                risk_level=risk_level,
+                classification_confidence=min_confidence,
+                fallback_invoked=fallback_invoked,
+                # A 911 dispatch additionally requires a real extracted hazard
+                # cue — passing these is what lets the validator distinguish a
+                # genuine life-safety call from a misclassification.
+                extracted_urgency_cues=extraction.urgency_cues,
+                # Full transcript powers the benign-context override that
+                # blocks 911 when the call carries an explicit "this is not a
+                # real emergency" signal ("no actual fire", "burnt popcorn",
+                # "false alarm", ...) — catches the over-escalation trap
+                # that surfaced on the test-set audit.
+                transcript_text=full_transcript,
+            )
     except Exception as e:
         logger.warning("validator failed: %s", e)
         validator_result = ValidatorResult(
@@ -206,14 +280,15 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
 
     # ── Step 6: Vendor selection ─────────────────────────────────────
     try:
-        vendor = select_vendor(
-            subcategory=subcategory,
-            city=location.city,
-            building_type=location.building_type,
-            risk_level=risk_level,
-            is_emergency=is_emergency,
-            after_hours=False,
-        )
+        with _time_stage(timings, "vendor"):
+            vendor = select_vendor(
+                subcategory=subcategory,
+                city=location.city,
+                building_type=location.building_type,
+                risk_level=risk_level,
+                is_emergency=is_emergency,
+                after_hours=False,
+            )
     except Exception as e:
         logger.warning("vendor selection failed: %s", e)
         vendor = VendorSelection(vendor_id=None, vendor_name=None, reason=f"error:{e}")
@@ -231,9 +306,10 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
 
     # ── Step 7: Clarification ────────────────────────────────────────
     try:
-        clarification = needs_clarification(
-            turns, extraction, classification, caller_phone=caller_phone
-        )
+        with _time_stage(timings, "clarify"):
+            clarification = needs_clarification(
+                turns, extraction, classification, caller_phone=caller_phone
+            )
     except Exception as e:
         logger.warning("clarification check failed: %s", e)
         clarification = ClarificationDecision(
@@ -249,18 +325,25 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
 
     # ── Step 8: Summary ──────────────────────────────────────────────
     unroutable = vendor.vendor_id is None and validator_result.needs_human_review
-    summary = generate_summary(
-        subcategory=subcategory,
-        risk_level=risk_level,
-        building_name=location.building_name,
-        floor=location.floor,
-        city=location.city,
-        vendor_name=vendor.vendor_name,
-        vendor_id=vendor.vendor_id,
-        dispatched_emergency_services=validator_result.dispatched_emergency_services,
-        needs_human_review=validator_result.needs_human_review,
-        unroutable=unroutable,
-    )
+    with _time_stage(timings, "summary"):
+        summary = generate_summary(
+            subcategory=subcategory,
+            risk_level=risk_level,
+            building_name=location.building_name,
+            floor=location.floor,
+            city=location.city,
+            vendor_name=vendor.vendor_name,
+            vendor_id=vendor.vendor_id,
+            dispatched_emergency_services=validator_result.dispatched_emergency_services,
+            needs_human_review=validator_result.needs_human_review,
+            unroutable=unroutable,
+        )
+
+    # Stamp total wall-clock before assembling the trainer log so the
+    # final dict carries the complete breakdown — STAGE_NAMES is the
+    # source of truth for which keys must appear.
+    timings["total"] = round((time.perf_counter() - _t_total_start) * 1000.0, 3)
+    latency_ms = {name: timings.get(name, 0.0) for name in STAGE_NAMES}
 
     # ── Step 9: Trainer log ──────────────────────────────────────────
     ai_pred = build_ai_prediction(
@@ -276,6 +359,7 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
         validator_reasons=list(validator_result.reasons),
         risk_reasons=list(risk.reasons),
         retrieved_record_ids=list(classification.retrieved_record_ids),
+        latency_ms=latency_ms,
     )
 
     # Sanitize transcript before storing in trainer log (T1 defense —
