@@ -100,8 +100,22 @@ async def _run_pipeline(
 
 
 async def _speak_summary(bus: CallBus, summary: str) -> None:
-    """Synthesize the call_summary to MP3 and emit it on the SSE bus."""
+    """Synthesize the call_summary to MP3, emit audio + agent transcript turn."""
     import base64
+
+    # Emit the agent's spoken response as a transcript turn first so the
+    # ticker shows the conversational round-trip. Then the TTS audio for
+    # the browser to play.
+    speakable = _make_speakable(summary)
+    await bus.publish(
+        {
+            "call_id": bus.call_id,
+            "stage": "transcript",
+            "status": "complete",
+            "timing_ms": 0,
+            "payload": {"speaker": "agent", "text": speakable},
+        }
+    )
 
     try:
         session = VoiceSession(
@@ -109,7 +123,7 @@ async def _speak_summary(bus: CallBus, summary: str) -> None:
             elevenlabs_key=os.environ.get("ELEVENLABS_API_KEY"),
         )
         # speak() is standalone — no connect() needed (TTS is HTTP, not WS).
-        mp3 = await session.speak(summary)
+        mp3 = await session.speak(speakable)
         await bus.publish(
             {
                 "call_id": bus.call_id,
@@ -119,12 +133,34 @@ async def _speak_summary(bus: CallBus, summary: str) -> None:
                 "payload": {
                     "audio_base64": base64.b64encode(mp3).decode("ascii"),
                     "audio_mime": "audio/mpeg",
-                    "summary": summary,
+                    "summary": speakable,
                 },
             }
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("voice response synthesis failed: %s", e)
+
+
+def _make_speakable(summary: str) -> str:
+    """Rewrite a call_summary so ElevenLabs reads it naturally.
+
+    The agent's summary is operator-style shorthand: 'Pipe leak at Building 3,
+    Floor 7. MEDIUM risk. Dispatched Metro Drain & Pipe.' ElevenLabs handles
+    most of this fine but mispronounces all-caps risk bands and digit
+    abbreviations. Apply a few targeted substitutions.
+    """
+    import re
+
+    s = summary
+    # Risk bands: read as words, lowercase
+    s = re.sub(r"\bEMERGENCY\b", "emergency", s)
+    s = re.sub(r"\bHIGH\b", "high", s)
+    s = re.sub(r"\bMEDIUM\b", "medium", s)
+    s = re.sub(r"\bLOW\b", "low", s)
+    # Digit floor / building abbreviations → spelled-out forms TTS reads cleanly
+    s = re.sub(r"\bFloor (\d+)\b", r"floor number \1", s)
+    s = re.sub(r"\bBuilding (\d+)\b", r"building number \1", s)
+    return s
 
 
 @router.post("/api/calls/start")
@@ -225,16 +261,21 @@ async def push_audio(call_id: str, request: Request):
 
     caller_phone = request.app.state.voice_phone.pop(call_id, None)
 
-    # Emit one named "transcript" SSE event per turn so the frontend's
-    # TranscriptTicker renders each speaker line in order. We also keep
-    # the bundled "voice" stage event for downstream consumers that want
-    # the full payload (debug panels, etc.).
+    # Emit each turn as a regular stage event with stage="transcript".
+    # The frontend's onEvent handler dispatches these into the ticker.
+    # Using the regular stage channel (rather than a named SSE event) is
+    # more robust against EventSource timing edge cases.
     for turn in turns:
         await bus.publish(
             {
-                "__sse_type__": "transcript",
-                "speaker": turn.get("speaker", "agent"),
-                "text": turn.get("text", ""),
+                "call_id": call_id,
+                "stage": "transcript",
+                "status": "complete",
+                "timing_ms": 0,
+                "payload": {
+                    "speaker": turn.get("speaker", "agent"),
+                    "text": turn.get("text", ""),
+                },
             }
         )
 

@@ -32,6 +32,24 @@ export default function HomePage() {
     setSelectedStage(null);
     unsubscribeRef.current = subscribeToCall(call_id, {
       onEvent: (event) => {
+        // Voice-mode: the backend emits each conversation turn as a
+        // stage="transcript" event. Route it into the transcript ticker
+        // via the dedicated reducer action.
+        if (
+          event.stage === "transcript" &&
+          event.status === "complete" &&
+          event.payload &&
+          typeof (event.payload as Record<string, unknown>).text === "string"
+        ) {
+          const p = event.payload as Record<string, string>;
+          dispatch({
+            type: "transcript_chunk",
+            speaker: p.speaker ?? "agent",
+            text: p.text,
+          });
+          return;
+        }
+
         dispatch({ type: "event", event });
         // Voice-mode: the backend's voice_response event carries a base64
         // mp3 of the agent's TTS reply. Decode and play it through the
