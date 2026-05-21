@@ -20,9 +20,14 @@ much you trust it is your call." Our documented model:
                     `_FRESH_HOURS` is skipped; an offline vendor with a
                     stale confirmation is treated as *unknown* (kept —
                     we don't trust a day-old "offline" to still hold).
-  - `at_capacity` — skipped ONLY on emergencies (don't pile an urgent
-                    life-safety job on a saturated crew); allowed for
-                    routine work where a short queue is acceptable.
+  - `at_capacity` — treated as a soft signal (kept in the candidate
+                    pool, regardless of risk). The brief says the cache
+                    is intentionally stale, so a stale at_capacity isn't
+                    authoritative enough to hard-filter — and on an
+                    emergency where the only qualified vendor is
+                    at_capacity, dispatching is better than escalating
+                    to nothing. Matches design doc §6.4's documented
+                    "ranked last but still in the candidate set" model.
   - `available`   — never blocked. A stale "available" is downgraded to
                     unknown confidence but remains a candidate.
   - missing/None  — unknown; kept.
@@ -124,15 +129,23 @@ def _is_recent(v: Vendor, now: Optional[datetime]) -> bool:
 
 
 def _availability_ok(v: Vendor, *, is_emergency: bool, now: Optional[datetime]) -> bool:
-    """Apply the documented stale-cache trust model. True = keep."""
+    """Apply the documented stale-cache trust model. True = keep.
+
+    Per design doc §6.4, the status cache is treated as a SOFT signal —
+    the brief says it "intentionally is" stale, so a stale at_capacity
+    or offline flag isn't authoritative enough to hard-filter a candidate
+    out of the pool. We keep them in and let the sort-key prefer
+    available vendors when both exist; if the only acceptable vendor is
+    at_capacity, dispatching it is better than escalating to a human
+    (which is what doing nothing on an emergency would mean).
+    """
     status = v.status_at_last_check
     if status == "offline":
-        # Trust an offline only if it was recently confirmed.
+        # Offline is only excluded when the cache is recently confirmed.
+        # If stale, treat as advisory and keep.
         return not _is_recent(v, now)
-    if status == "at_capacity":
-        # Saturated crews are skipped for emergencies only.
-        return not is_emergency
-    # 'available', None, or any unknown status → keep.
+    # at_capacity / available / None / unknown → keep. Sort-key handles
+    # preference; this filter is binary-keep, not rank.
     return True
 
 

@@ -321,7 +321,7 @@
     "intake_agreement_rate": 0.969349,
     "intake_over_escalation_rate": 0.0,
     "intake_under_escalation_rate": 0.030651,
-    "modal_risk": "HIGH",
+    "modal_risk": "MEDIUM",
     "n": 261
   },
   "power_outage": {
@@ -334,7 +334,7 @@
     "intake_agreement_rate": 0.976923,
     "intake_over_escalation_rate": 0.003846,
     "intake_under_escalation_rate": 0.019231,
-    "modal_risk": "HIGH",
+    "modal_risk": "MEDIUM",
     "n": 260
   },
   "refrigerant": {
