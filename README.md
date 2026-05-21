@@ -57,6 +57,17 @@ python evaluation/run_eval.py \
     --out predictions.json
 ```
 
+### Agent module path — two equivalent options
+
+Both `--agent` flags below resolve to the same `classify()` function. Either works for grading:
+
+```bash
+--agent agent.classify:classify          # native module path
+--agent your_submission.agent:classify   # spec-template path (your_submission/agent.py re-exports the same callable)
+```
+
+The `your_submission/agent.py` shim exists so the literal example command from the assignment brief runs without modification.
+
 The chroma store is gitignored — it's built on first run from
 [`operational/historical_records.json`](operational/historical_records.json)
 using the `text-embedding-3-small` model (configurable via `AGENT_EMBEDDING_MODEL`).
