@@ -91,13 +91,13 @@ class TestSpeak:
             yield b"\x00\x01"
             yield b"\x02\x03"
 
-        mock_client = AsyncMock()
-        mock_client.text_to_speech.convert = AsyncMock(return_value=fake_stream())
+        mock_client = MagicMock()
+        mock_client.text_to_speech.convert = MagicMock(return_value=fake_stream())
         session._eleven_client = mock_client
 
         audio = await session.speak("hello")
         assert audio == b"\x00\x01\x02\x03"
-        mock_client.text_to_speech.convert.assert_awaited_once()
+        mock_client.text_to_speech.convert.assert_called_once()
 
 
 class TestConnect:

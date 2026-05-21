@@ -140,16 +140,15 @@ class VoiceSession:
         if self._eleven_client is None:
             raise RuntimeError("VoiceSession is not connected — call connect() first")
 
-        audio = await self._eleven_client.text_to_speech.convert(
+        audio_stream = self._eleven_client.text_to_speech.convert(
             voice_id=self._voice_id,
             text=text,
             model_id="eleven_turbo_v2_5",
             output_format="mp3_44100_128",
         )
 
-        # The SDK returns an async iterator of bytes chunks
         chunks: list[bytes] = []
-        async for chunk in audio:
+        async for chunk in audio_stream:
             chunks.append(chunk)
         return b"".join(chunks)
 
