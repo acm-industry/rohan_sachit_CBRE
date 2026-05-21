@@ -101,12 +101,8 @@ async def _run_pipeline(
 
 async def _speak_summary(bus: CallBus, summary: str) -> None:
     """Synthesize the call_summary to MP3, emit audio + agent transcript turn."""
-    import base64
-
-    # Emit the agent's spoken response as a transcript turn first so the
-    # ticker shows the conversational round-trip. Then the TTS audio for
-    # the browser to play.
     speakable = _make_speakable(summary)
+    # Show the agent's spoken response in the ticker first.
     await bus.publish(
         {
             "call_id": bus.call_id,
@@ -116,6 +112,17 @@ async def _speak_summary(bus: CallBus, summary: str) -> None:
             "payload": {"speaker": "agent", "text": speakable},
         }
     )
+    await _speak_text(bus, speakable)
+
+
+async def _speak_text(bus: CallBus, text: str) -> None:
+    """Synthesize `text` to MP3 via ElevenLabs and publish a voice_response.
+
+    Use for any agent-spoken line (greeting, summary, mid-call clarifying
+    question, etc.). Safe to fire-and-forget as a background task; errors
+    are logged but never raise.
+    """
+    import base64
 
     try:
         session = VoiceSession(
@@ -123,7 +130,7 @@ async def _speak_summary(bus: CallBus, summary: str) -> None:
             elevenlabs_key=os.environ.get("ELEVENLABS_API_KEY"),
         )
         # speak() is standalone — no connect() needed (TTS is HTTP, not WS).
-        mp3 = await session.speak(speakable)
+        mp3 = await session.speak(text)
         await bus.publish(
             {
                 "call_id": bus.call_id,
@@ -133,12 +140,12 @@ async def _speak_summary(bus: CallBus, summary: str) -> None:
                 "payload": {
                     "audio_base64": base64.b64encode(mp3).decode("ascii"),
                     "audio_mime": "audio/mpeg",
-                    "summary": speakable,
+                    "text": text,
                 },
             }
         )
     except Exception as e:  # noqa: BLE001
-        logger.exception("voice response synthesis failed: %s", e)
+        logger.exception("voice synthesis failed for %r: %s", text[:50], e)
 
 
 def _make_speakable(summary: str) -> str:
@@ -288,6 +295,18 @@ async def push_audio(call_id: str, request: Request):
             "payload": {"turns": turns, "voice_available": VOICE_AVAILABLE},
         }
     )
+
+    # Speak the agent's greeting aloud (the first agent turn we synthesized
+    # in session.transcribe()). Fire it as a background task so the
+    # ElevenLabs HTTP call doesn't block the pipeline kickoff — the
+    # voice_response event will land on the SSE stream when ready.
+    greeting = (
+        turns[0]["text"]
+        if turns and turns[0].get("speaker") == "agent"
+        else None
+    )
+    if greeting and VOICE_AVAILABLE:
+        asyncio.create_task(_speak_text(bus, greeting))
 
     # speak_response=True wires the agent's TTS reply at end of pipeline.
     asyncio.create_task(
