@@ -18,7 +18,10 @@ The rule (v2):
      the 15% OER bar but have overwhelming audit evidence at higher
      bands. `waste_odor` qualifies structurally but is excluded — see
      the dev-sweep table in `scripts/derive_hitl_policy.py`.)
-  4. classifier_confidence < `low_confidence`        → pause
+  4. classifier_confidence < `low_confidence` AND
+     predicted_risk != LOW                            → pause
+     (risk-weighted: low confidence on a LOW-risk call
+     is acceptable because cost of error is negligible)
   5. classifier fallback path invoked                → pause
   6. otherwise                                       → auto-resolve
 
@@ -160,8 +163,14 @@ def should_pause(
         return True, reasons
 
     if classification_confidence is not None and classification_confidence < low_confidence_threshold():
-        reasons.append(f"low_confidence:{classification_confidence:.2f}")
-        return True, reasons
+        # Risk-weighted threshold: low confidence on a LOW-risk call is
+        # acceptable because cost of error is negligible (minor mis-routing
+        # at worst). Only pause when the cost of a wrong decision is
+        # non-trivial (MEDIUM+). Implements the brief's Stage 4 guidance:
+        # "Risk = P(error) × Cost(error)".
+        if predicted_risk != "LOW":
+            reasons.append(f"low_confidence_high_cost:{classification_confidence:.2f}")
+            return True, reasons
 
     if fallback_invoked:
         reasons.append("classifier_fallback_invoked")

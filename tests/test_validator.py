@@ -239,8 +239,8 @@ def test_should_pause_method_mirrors_needs_review():
 # ─── Additional edge cases ────────────────────────────────────────────
 
 
-def test_low_confidence_triggers_review():
-    """Low classification confidence → pause regardless of risk."""
+def test_low_confidence_low_risk_auto_resolves():
+    """Risk-weighted: LOW risk + low confidence = negligible cost of error."""
     _reset()
     result = validate(
         subcategory="lighting",
@@ -248,8 +248,20 @@ def test_low_confidence_triggers_review():
         classification_confidence=0.3,
         fallback_invoked=False,
     )
+    assert result.needs_human_review is False
+
+
+def test_low_confidence_medium_risk_triggers_review():
+    """Risk-weighted: MEDIUM risk + low confidence = non-trivial cost."""
+    _reset()
+    result = validate(
+        subcategory="lighting",
+        risk_level="MEDIUM",
+        classification_confidence=0.3,
+        fallback_invoked=False,
+    )
     assert result.needs_human_review is True
-    assert "low_confidence" in result.reasons[0]
+    assert any("low_confidence_high_cost" in r for r in result.reasons)
 
 
 def test_fallback_invoked_triggers_review():
