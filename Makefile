@@ -19,10 +19,6 @@ test-contract:  ## Run the schema-conformance canary (issue #2). Required to pas
 	$(VENV_PY) tests/test_contract.py
 
 test-fast:  ## Run every test that doesn't need OPENAI_API_KEY. Should be < 30s on a laptop.
-	@# Globs tests/test_*.py and skips the LLM-backed / RAG-store suites
-	@# (test_classify, test_extract, test_rag_build, test_rag_retriever).
-	@# test_contract is the schema-canary; runs first and short-circuits
-	@# if it fails.
 	@for f in tests/test_*.py; do \
 		case "$$(basename $$f)" in \
 		  test_classify.py|test_extract.py|test_rag_build.py|test_rag_retriever.py) continue ;; \
@@ -50,20 +46,18 @@ backend-only:  ## Start FastAPI on :8000 (demo backend only)
 
 frontend-only:  ## Start Next.js on :3000 if frontend/ exists
 	@if [ -d frontend ]; then \
-		cd frontend && npm run dev; \
+		cd frontend && (npm install --silent && npm run dev); \
 	else \
-		echo "frontend/ does not exist yet — backend-only for now"; \
+		echo "frontend/ does not exist yet"; exit 1; \
 	fi
 
 demo:  ## Start backend (:8000) and frontend (:3000) together; Ctrl-C tears both down
 	@echo ">>> starting CBRE HITL live demo (backend :8000, frontend :3000)"
 	@trap 'echo; echo ">>> stopping demo"; kill 0' INT TERM EXIT; \
 	$(VENV_PY) -m uvicorn backend.main:app --port 8000 & \
-	BACKEND_PID=$$!; \
 	if [ -d frontend ]; then \
 		(cd frontend && npm run dev) & \
-		FRONTEND_PID=$$!; \
 	else \
 		echo ">>> frontend/ not found, running backend-only"; \
 	fi; \
-	wait $$BACKEND_PID
+	wait
