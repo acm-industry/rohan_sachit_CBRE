@@ -31,7 +31,32 @@ export default function HomePage() {
     dispatch({ type: "reset", call_id });
     setSelectedStage(null);
     unsubscribeRef.current = subscribeToCall(call_id, {
-      onEvent: (event) => dispatch({ type: "event", event }),
+      onEvent: (event) => {
+        dispatch({ type: "event", event });
+        // Voice-mode: the backend's voice_response event carries a base64
+        // mp3 of the agent's TTS reply. Decode and play it through the
+        // browser's audio output as soon as it arrives.
+        if (
+          event.stage === "voice_response" &&
+          event.status === "complete" &&
+          event.payload &&
+          typeof (event.payload as Record<string, unknown>).audio_base64 === "string"
+        ) {
+          const b64 = (event.payload as Record<string, string>).audio_base64;
+          const mime =
+            (event.payload as Record<string, string>).audio_mime || "audio/mpeg";
+          try {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: mime });
+            const audio = new Audio(URL.createObjectURL(blob));
+            void audio.play();
+          } catch (err) {
+            console.error("failed to play voice_response audio", err);
+          }
+        }
+      },
       onTranscript: ({ speaker, text }) =>
         dispatch({ type: "transcript_chunk", speaker, text }),
       onError: (err) => {

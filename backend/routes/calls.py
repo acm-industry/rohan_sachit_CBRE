@@ -50,16 +50,40 @@ async def _run_pipeline(
     bus: CallBus,
     turns: List[dict],
     caller_phone: Optional[str],
+    *,
+    speak_response: bool = False,
 ) -> None:
-    """Run the agent pipeline as a background task and close the bus."""
+    """Run the agent pipeline as a background task and close the bus.
+
+    When `speak_response=True` (voice-mode calls), the pipeline's summary
+    is captured and synthesized to speech via ElevenLabs; an additional
+    `voice_response` SSE event is emitted with base64-encoded mp3 audio
+    so the frontend can play it back to the caller.
+    """
+    captured_summary: Dict[str, Optional[str]] = {"value": None}
+    base_emitter = make_emitter(bus)
+
+    async def emitter(event: Dict[str, Any]) -> None:
+        await base_emitter(event)
+        if (
+            speak_response
+            and event.get("stage") == "summary"
+            and event.get("status") == "complete"
+        ):
+            payload = event.get("payload") or {}
+            captured_summary["value"] = payload.get("call_summary")
+
     try:
         await classify_with_events(
             turns,
             caller_phone,
-            emitter=make_emitter(bus),
+            emitter=emitter,
             pause_at_validator=True,
             wait_for_resume=bus.wait_for_resume,
         )
+
+        if speak_response and captured_summary["value"] and VOICE_AVAILABLE:
+            await _speak_summary(bus, captured_summary["value"])
     except Exception as e:  # noqa: BLE001
         logger.exception("pipeline failed for %s: %s", bus.call_id, e)
         await bus.publish(
@@ -73,6 +97,34 @@ async def _run_pipeline(
         )
     finally:
         await bus.close()
+
+
+async def _speak_summary(bus: CallBus, summary: str) -> None:
+    """Synthesize the call_summary to MP3 and emit it on the SSE bus."""
+    import base64
+
+    try:
+        session = VoiceSession(
+            deepgram_key=os.environ.get("DEEPGRAM_API_KEY"),
+            elevenlabs_key=os.environ.get("ELEVENLABS_API_KEY"),
+        )
+        # speak() is standalone — no connect() needed (TTS is HTTP, not WS).
+        mp3 = await session.speak(summary)
+        await bus.publish(
+            {
+                "call_id": bus.call_id,
+                "stage": "voice_response",
+                "status": "complete",
+                "timing_ms": 0,
+                "payload": {
+                    "audio_base64": base64.b64encode(mp3).decode("ascii"),
+                    "audio_mime": "audio/mpeg",
+                    "summary": summary,
+                },
+            }
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("voice response synthesis failed: %s", e)
 
 
 @router.post("/api/calls/start")
@@ -103,15 +155,26 @@ async def start_call(body: StartCallBody, request: Request) -> Dict[str, str]:
 
 
 async def _sse_stream(bus: CallBus):
-    """Convert bus events to SSE-formatted lines."""
-    # Initial comment line keeps the connection open while clients attach.
+    """Convert bus events to SSE-formatted lines.
+
+    Events with `__sse_type__` are emitted as named SSE events (the value
+    becomes the SSE `event:` line); everything else is emitted as a default
+    unnamed event for `EventSource.onmessage`. This lets the backend
+    publish transcript chunks under the named `transcript` channel that
+    the frontend's `onTranscript` handler subscribes to.
+    """
     yield ": connected\n\n"
     while True:
         event = await bus.queue.get()
         if is_sentinel(event):
             yield "event: done\ndata: {}\n\n"
             return
-        yield f"data: {json.dumps(event, default=str)}\n\n"
+        sse_type = event.pop("__sse_type__", None) if isinstance(event, dict) else None
+        payload = json.dumps(event, default=str)
+        if sse_type:
+            yield f"event: {sse_type}\ndata: {payload}\n\n"
+        else:
+            yield f"data: {payload}\n\n"
 
 
 @router.get("/api/calls/{call_id}/events")
@@ -162,7 +225,19 @@ async def push_audio(call_id: str, request: Request):
 
     caller_phone = request.app.state.voice_phone.pop(call_id, None)
 
-    # Emit a transcript event up front so the UI can render the turns.
+    # Emit one named "transcript" SSE event per turn so the frontend's
+    # TranscriptTicker renders each speaker line in order. We also keep
+    # the bundled "voice" stage event for downstream consumers that want
+    # the full payload (debug panels, etc.).
+    for turn in turns:
+        await bus.publish(
+            {
+                "__sse_type__": "transcript",
+                "speaker": turn.get("speaker", "agent"),
+                "text": turn.get("text", ""),
+            }
+        )
+
     await bus.publish(
         {
             "call_id": call_id,
@@ -173,5 +248,8 @@ async def push_audio(call_id: str, request: Request):
         }
     )
 
-    asyncio.create_task(_run_pipeline(bus, turns, caller_phone))
+    # speak_response=True wires the agent's TTS reply at end of pipeline.
+    asyncio.create_task(
+        _run_pipeline(bus, turns, caller_phone, speak_response=True)
+    )
     return {"ok": True, "voice_available": VOICE_AVAILABLE}

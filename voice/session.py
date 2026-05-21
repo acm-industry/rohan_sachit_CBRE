@@ -271,11 +271,15 @@ class VoiceSession:
     # ------------------------------------------------------------------
 
     async def speak(self, text: str) -> bytes:
-        """Synthesize speech from text via ElevenLabs. Returns mp3 bytes."""
+        """Synthesize speech from text via ElevenLabs. Returns mp3 bytes.
+
+        ElevenLabs is HTTP-based (no persistent websocket like Deepgram),
+        so this works standalone — you can construct a VoiceSession purely
+        for TTS without ever calling connect(). The ElevenLabs client is
+        created lazily on first speak().
+        """
         if self._eleven_client is None:
-            raise RuntimeError(
-                "VoiceSession is not connected — call connect() first"
-            )
+            self._eleven_client = AsyncElevenLabs(api_key=self._eleven_key)
 
         audio_stream = self._eleven_client.text_to_speech.convert(
             voice_id=self._voice_id,
