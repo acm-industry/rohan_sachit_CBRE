@@ -78,6 +78,20 @@ _SOFT_ESCALATION_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
 # Building types where occupant safety / 24-hour presence elevates risk.
 _SENSITIVE_BUILDING_TYPES = frozenset({"medical", "residential"})
 
+# Near-tie base demotion (Lever A from the post-submission audit).
+# Two subcategories — pipe_leak and power_outage — have nearly-equal
+# historical distributions between MEDIUM and HIGH (pipe_leak: 43.3%
+# MEDIUM vs 46.0% HIGH; power_outage: 46.9% vs 47.7%). The modal-risk
+# rule blindly picks HIGH and over-classifies the ~half of these calls
+# that are routine MEDIUM. Without any extracted urgency cue from the
+# transcript, default to the cautious MEDIUM band; cues (soft or hard)
+# can still push it back up via the modifier loop below. The thresholds
+# are data-driven — any subcategory with HIGH and MEDIUM both ≥ 40%
+# and within 10 percentage points of each other qualifies, so a corpus
+# refresh updates the policy automatically.
+_NEAR_TIE_MIN_SHARE = 0.40
+_NEAR_TIE_TOLERANCE = 0.10
+
 
 @dataclass(frozen=True)
 class RiskAssignment:
@@ -180,6 +194,24 @@ def assign_risk(
     """
     base = risk_data.base_risk_for(subcategory) or "MEDIUM"
     reasons: List[str] = [f"base_risk:{base}"]
+
+    # Near-tie demote: when the corpus is split between MEDIUM and HIGH
+    # for this subcategory AND the caller offered no urgency cue, fall
+    # to the cautious side. Cues below can still push back up. Targets
+    # the pipe_leak / power_outage HITL-FP cluster from §9.7's audit.
+    if base == "HIGH" and not extraction.urgency_cues:
+        _dist = risk_data.risk_distribution(subcategory) or {}
+        _h, _m = _dist.get("HIGH", 0.0), _dist.get("MEDIUM", 0.0)
+        if (
+            _h >= _NEAR_TIE_MIN_SHARE
+            and _m >= _NEAR_TIE_MIN_SHARE
+            and abs(_h - _m) < _NEAR_TIE_TOLERANCE
+        ):
+            base = "MEDIUM"
+            reasons.append(
+                f"near_tie_no_cue_demote:HIGH->MEDIUM(HIGH={_h:.0%},MEDIUM={_m:.0%})"
+            )
+
     rank = RISK_LEVEL_RANK[base]
 
     # Modifier 1: caller's verbatim urgency cues.

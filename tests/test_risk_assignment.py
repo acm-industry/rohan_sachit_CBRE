@@ -152,6 +152,48 @@ def test_hard_cues_uncapped_can_promote_pipe_leak_to_emergency():
     assert any("hard_cue:gas leak" in reason for reason in r.reasons)
 
 
+def test_near_tie_no_cue_demotes_pipe_leak_to_medium():
+    """pipe_leak's historical distribution is 43.3% MEDIUM vs 46.0% HIGH
+    — essentially tied. With NO extracted urgency cue, default to the
+    cautious MEDIUM band rather than auto-applying the modal HIGH.
+    This cuts the HITL false-positive cluster (pipe_leak rows GT-marks
+    as MEDIUM/auto-resolve but the validator was pausing at HIGH)."""
+    e = _extraction(urgency_cues=[])
+    r = assign_risk(e, "pipe_leak")
+    assert r.band == "MEDIUM"
+    assert any("near_tie_no_cue_demote" in reason for reason in r.reasons)
+
+
+def test_near_tie_demote_does_not_fire_when_cue_present():
+    """The demote is gated on the absence of urgency cues — once the
+    caller signals escalation ("flooding"), the cue path takes over
+    and base stays HIGH (soft cue +1, capped at HIGH per issue #69)."""
+    e = _extraction(urgency_cues=["flooding"])  # soft cue
+    r = assign_risk(e, "pipe_leak")
+    assert r.band == "HIGH"
+    assert not any("near_tie_no_cue_demote" in reason for reason in r.reasons)
+
+
+def test_near_tie_demote_targets_power_outage_too():
+    """power_outage: 46.9% MEDIUM vs 47.7% HIGH — also qualifies. Same
+    rule, no per-subcategory hardcode."""
+    e = _extraction(urgency_cues=[])
+    r = assign_risk(e, "power_outage")
+    assert r.band == "MEDIUM"
+    assert any("near_tie_no_cue_demote" in reason for reason in r.reasons)
+
+
+def test_near_tie_demote_does_not_fire_on_clear_modal():
+    """structural is 85.7% HIGH / 14.3% EMERGENCY / 0% MEDIUM — not a
+    near-tie, so the modal HIGH stands even with no cues. Drift guard:
+    if the corpus shifts and structural's MEDIUM share crosses 40%,
+    this test fails and forces a review of the demote thresholds."""
+    e = _extraction(urgency_cues=[])
+    r = assign_risk(e, "structural")
+    assert r.band == "HIGH"
+    assert not any("near_tie_no_cue_demote" in reason for reason in r.reasons)
+
+
 def test_soft_cues_bump_by_one():
     """Soft cues lift no_heating (base LOW) to MEDIUM."""
     e = _extraction(urgency_cues=["overnight"])
