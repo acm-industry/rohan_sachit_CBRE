@@ -1,0 +1,1 @@
+"""Submission-namespace shim — see your_submission/agent.py for the entrypoint."""
