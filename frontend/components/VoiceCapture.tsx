@@ -23,10 +23,15 @@ const TARGET_SAMPLE_RATE = 16000;
 
 type Props = {
   onCallStart: (call_id: string) => void;
+  onRegisterGreetingDone: (cb: () => void) => void;
   busy: boolean;
 };
 
-export function VoiceCapture({ onCallStart, busy }: Props) {
+export function VoiceCapture({
+  onCallStart,
+  onRegisterGreetingDone,
+  busy,
+}: Props) {
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState<string>("idle");
   const callIdRef = useRef<string | null>(null);
@@ -39,6 +44,16 @@ export function VoiceCapture({ onCallStart, busy }: Props) {
   const start = async () => {
     if (busy) return;
     setStatus("starting call...");
+
+    // Register the "greeting done" callback BEFORE starting the call,
+    // so when the greeting voice_response arrives on the SSE stream and
+    // the page plays it, we're notified when playback finishes. Mic
+    // capture waits on this promise — otherwise the mic picks up the
+    // greeting playing through the laptop speakers and Deepgram
+    // transcribes a contaminated stream.
+    const greetingDone = new Promise<void>((resolve) => {
+      onRegisterGreetingDone(resolve);
+    });
 
     // 1. Tell the backend to spin up a call_id immediately. The
     //    backend's voice-mode start_call kicks off the agent greeting
@@ -58,9 +73,18 @@ export function VoiceCapture({ onCallStart, busy }: Props) {
       return;
     }
 
-    // 3. Request mic + start capturing. The greeting will play through
-    //    the speakers shortly after; the caller speaks into the mic
-    //    when ready.
+    // 3. Wait for the greeting audio to finish playing before opening
+    //    the mic. Fall back after 6 s in case the greeting never
+    //    arrives (network issue, ElevenLabs down, etc.) — we still
+    //    want the demo to work.
+    setStatus("🔊 listening to greeting...");
+    await Promise.race([
+      greetingDone,
+      new Promise<void>((resolve) => setTimeout(resolve, 6000)),
+    ]);
+
+    // 4. Request mic + start capturing. Greeting has finished playing
+    //    so the mic only picks up the caller's voice.
     setStatus("requesting mic...");
     let stream: MediaStream;
     try {

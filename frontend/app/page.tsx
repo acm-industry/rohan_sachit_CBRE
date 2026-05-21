@@ -18,6 +18,11 @@ export default function HomePage() {
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
   const [busy, setBusy] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  // VoiceCapture registers a callback here on Start; we invoke it when
+  // the FIRST voice_response audio (the greeting) finishes playing, so
+  // VoiceCapture knows it's safe to open the mic without echo-feedback
+  // from the speakers picking up the greeting.
+  const greetingDoneCallbackRef = useRef<(() => void) | null>(null);
 
   useEffect(
     () => () => {
@@ -25,6 +30,10 @@ export default function HomePage() {
     },
     [],
   );
+
+  const registerGreetingDoneCallback = useCallback((cb: () => void) => {
+    greetingDoneCallbackRef.current = cb;
+  }, []);
 
   const subscribeToActiveCall = useCallback((call_id: string) => {
     unsubscribeRef.current?.();
@@ -53,7 +62,10 @@ export default function HomePage() {
         dispatch({ type: "event", event });
         // Voice-mode: the backend's voice_response event carries a base64
         // mp3 of the agent's TTS reply. Decode and play it through the
-        // browser's audio output as soon as it arrives.
+        // browser's audio output as soon as it arrives. The FIRST one is
+        // the greeting (fired by /api/calls/start) — when it finishes
+        // playing, fire VoiceCapture's "greeting done" callback so it
+        // can open the mic without echo from the speakers.
         if (
           event.stage === "voice_response" &&
           event.status === "complete" &&
@@ -69,9 +81,20 @@ export default function HomePage() {
             for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
             const blob = new Blob([bytes], { type: mime });
             const audio = new Audio(URL.createObjectURL(blob));
+            const pending = greetingDoneCallbackRef.current;
+            if (pending) {
+              greetingDoneCallbackRef.current = null;
+              audio.onended = () => pending();
+              audio.onerror = () => pending();
+            }
             void audio.play();
           } catch (err) {
             console.error("failed to play voice_response audio", err);
+            const pending = greetingDoneCallbackRef.current;
+            if (pending) {
+              greetingDoneCallbackRef.current = null;
+              pending();
+            }
           }
         }
       },
@@ -132,7 +155,11 @@ export default function HomePage() {
         activeCallId={state.call_id || null}
       />
 
-      <VoiceCapture onCallStart={onVoiceCallStart} busy={busy} />
+      <VoiceCapture
+        onCallStart={onVoiceCallStart}
+        onRegisterGreetingDone={registerGreetingDoneCallback}
+        busy={busy}
+      />
 
       <section className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6">
         <TranscriptTicker turns={state.transcript} />
