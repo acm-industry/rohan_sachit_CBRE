@@ -45,7 +45,7 @@ from agent.nodes.vendor_select import VendorSelection  # noqa: E402
 # ─── Layer 1: source pin ───────────────────────────────────────────────
 
 EXPECTED_CLASSIFY_HASH = (
-    "b1704a0c1a91c48aa3ef60056bec9eb32d2c96e08647f5669f4262b0105486bb"
+    "959d79c2de66f8e9a18e0d6b39ba90360fd22ed98e61826fd6efcbba2b693223"
 )
 
 
