@@ -18,11 +18,15 @@ export default function HomePage() {
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
   const [busy, setBusy] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  // VoiceCapture registers a callback here on Start; we invoke it when
-  // the FIRST voice_response audio (the greeting) finishes playing, so
-  // VoiceCapture knows it's safe to open the mic without echo-feedback
-  // from the speakers picking up the greeting.
+  // VoiceCapture registers callbacks here, one per phase of the call.
+  // We invoke them when the matching voice_response audio finishes
+  // playing — so the mic only opens once the speakers are silent
+  // (otherwise echo feedback contaminates the next caller turn).
+  //   - greetingDone: fires after the opening greeting → first mic open
+  //   - clarificationDone: fires after the agent's clarifying question
+  //     → re-opens the mic for the follow-up answer
   const greetingDoneCallbackRef = useRef<(() => void) | null>(null);
+  const clarificationDoneCallbackRef = useRef<(() => void) | null>(null);
 
   useEffect(
     () => () => {
@@ -33,6 +37,10 @@ export default function HomePage() {
 
   const registerGreetingDoneCallback = useCallback((cb: () => void) => {
     greetingDoneCallbackRef.current = cb;
+  }, []);
+
+  const registerClarificationDoneCallback = useCallback((cb: () => void) => {
+    clarificationDoneCallbackRef.current = cb;
   }, []);
 
   const subscribeToActiveCall = useCallback((call_id: string) => {
@@ -60,39 +68,54 @@ export default function HomePage() {
         }
 
         dispatch({ type: "event", event });
-        // Voice-mode: the backend's voice_response event carries a base64
-        // mp3 of the agent's TTS reply. Decode and play it through the
-        // browser's audio output as soon as it arrives. The FIRST one is
-        // the greeting (fired by /api/calls/start) — when it finishes
-        // playing, fire VoiceCapture's "greeting done" callback so it
-        // can open the mic without echo from the speakers.
+        // Voice-mode: the backend emits voice_response events with a
+        // base64 mp3 payload + a `kind` field marking what the audio
+        // is for. We decode and play, then fire the matching "done"
+        // callback so VoiceCapture can re-arm the mic without echo.
+        //   kind="greeting"      → fires greetingDoneCallbackRef
+        //   kind="clarification" → fires clarificationDoneCallbackRef
+        //   kind="summary"       → no callback; call has ended
         if (
           event.stage === "voice_response" &&
           event.status === "complete" &&
           event.payload &&
           typeof (event.payload as Record<string, unknown>).audio_base64 === "string"
         ) {
-          const b64 = (event.payload as Record<string, string>).audio_base64;
-          const mime =
-            (event.payload as Record<string, string>).audio_mime || "audio/mpeg";
+          const p = event.payload as Record<string, string>;
+          const b64 = p.audio_base64;
+          const mime = p.audio_mime || "audio/mpeg";
+          const kind = p.kind ?? "greeting"; // legacy fallback
           try {
             const bin = atob(b64);
             const bytes = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
             const blob = new Blob([bytes], { type: mime });
             const audio = new Audio(URL.createObjectURL(blob));
-            const pending = greetingDoneCallbackRef.current;
-            if (pending) {
-              greetingDoneCallbackRef.current = null;
+
+            const callbackRef =
+              kind === "clarification"
+                ? clarificationDoneCallbackRef
+                : kind === "greeting"
+                  ? greetingDoneCallbackRef
+                  : null; // summary: no re-arm
+            const pending = callbackRef?.current ?? null;
+            if (pending && callbackRef) {
+              callbackRef.current = null;
               audio.onended = () => pending();
               audio.onerror = () => pending();
             }
             void audio.play();
           } catch (err) {
             console.error("failed to play voice_response audio", err);
-            const pending = greetingDoneCallbackRef.current;
-            if (pending) {
-              greetingDoneCallbackRef.current = null;
+            const callbackRef =
+              kind === "clarification"
+                ? clarificationDoneCallbackRef
+                : kind === "greeting"
+                  ? greetingDoneCallbackRef
+                  : null;
+            const pending = callbackRef?.current ?? null;
+            if (pending && callbackRef) {
+              callbackRef.current = null;
               pending();
             }
           }
@@ -158,6 +181,7 @@ export default function HomePage() {
       <VoiceCapture
         onCallStart={onVoiceCallStart}
         onRegisterGreetingDone={registerGreetingDoneCallback}
+        onRegisterClarificationDone={registerClarificationDoneCallback}
         busy={busy}
       />
 

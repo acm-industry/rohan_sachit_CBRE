@@ -24,12 +24,14 @@ const TARGET_SAMPLE_RATE = 16000;
 type Props = {
   onCallStart: (call_id: string) => void;
   onRegisterGreetingDone: (cb: () => void) => void;
+  onRegisterClarificationDone: (cb: () => void) => void;
   busy: boolean;
 };
 
 export function VoiceCapture({
   onCallStart,
   onRegisterGreetingDone,
+  onRegisterClarificationDone,
   busy,
 }: Props) {
   const [recording, setRecording] = useState(false);
@@ -83,8 +85,14 @@ export function VoiceCapture({
       new Promise<void>((resolve) => setTimeout(resolve, 6000)),
     ]);
 
-    // 4. Request mic + start capturing. Greeting has finished playing
-    //    so the mic only picks up the caller's voice.
+    // 4. Open the mic and start capturing.
+    await openMic("🔴 call open — speak when ready, click stop when done");
+  };
+
+  // Open the mic + ScriptProcessor for PCM capture. Used both for the
+  // first caller turn (after the greeting plays) and for follow-up
+  // turns after the agent's clarifying question plays.
+  const openMic = async (readyStatus: string) => {
     setStatus("requesting mic...");
     let stream: MediaStream;
     try {
@@ -125,7 +133,7 @@ export function VoiceCapture({
     source.connect(processor);
     processor.connect(ctx.destination);
     setRecording(true);
-    setStatus("🔴 call open — speak when ready, click stop when done");
+    setStatus(readyStatus);
   };
 
   const stop = async () => {
@@ -140,7 +148,10 @@ export function VoiceCapture({
     streamRef.current = null;
 
     const call_id = callIdRef.current;
-    callIdRef.current = null;
+    // NOTE: we DON'T clear callIdRef here — the call may continue with
+    // a follow-up if the agent asks a clarifying question. callIdRef
+    // is cleared when the backend tells us the call ended (summary
+    // voice_response with kind="summary").
 
     // Concatenate Int16 chunks into a single buffer.
     const total = chunksRef.current.reduce((sum, c) => sum + c.length, 0);
@@ -160,6 +171,16 @@ export function VoiceCapture({
     const blob = new Blob([merged.buffer], { type: "application/octet-stream" });
     const seconds = total / TARGET_SAMPLE_RATE;
     setStatus(`captured ${seconds.toFixed(1)}s — uploading...`);
+
+    // Register the clarification-done callback BEFORE uploading. If the
+    // pipeline decides it needs a clarifying question, the page will
+    // play the question audio and then fire this callback, prompting
+    // us to re-open the mic for the caller's follow-up.
+    onRegisterClarificationDone(() => {
+      void openMic(
+        "🔴 follow-up — agent asked a question; speak when ready, click stop"
+      );
+    });
 
     try {
       const result = await pushAudio(call_id, blob);

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 _SENTINEL_DONE: Dict[str, Any] = {"__done__": True}
@@ -22,6 +22,11 @@ class CallBus:
     resume_event: asyncio.Event = field(default_factory=asyncio.Event)
     resume_payload: Optional[Dict[str, Any]] = None
     done: bool = False
+    # Voice-mode multi-turn state: accumulated dialogue turns across the
+    # call, and a flag indicating whether the agent has already asked
+    # one clarifying question (capped at one round to bound the demo).
+    turns: List[Dict[str, Any]] = field(default_factory=list)
+    clarification_asked: bool = False
 
     async def publish(self, event: Dict[str, Any]) -> None:
         await self.queue.put(event)

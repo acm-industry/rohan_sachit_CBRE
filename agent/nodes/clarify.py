@@ -115,13 +115,24 @@ def _build_question(
     floor_correction: Optional[Tuple[int, int]],
     is_sparse: bool,
     is_generic: bool,
+    no_location: bool = False,
 ) -> str:
-    """Pick the most useful single question. Priority: address the
-    most-resolvable ambiguity first."""
+    """Pick the most useful single question. Priority order, most-specific
+    first:
+
+      1. floor_correction — caller mentioned two different floors; ask which.
+      2. no_location     — neither building nor floor extracted; ask both.
+      3. sparse/generic  — vague description; ask for symptom detail.
+    """
     if floor_correction:
         f1, f2 = floor_correction
         return (
             f"Just to confirm — is the issue on Floor {f1} or Floor {f2}?"
+        )
+    if no_location:
+        return (
+            "I want to make sure I get the right team out — which building "
+            "and floor are you calling from?"
         )
     if is_sparse or is_generic:
         return (
@@ -163,6 +174,16 @@ def needs_clarification(
     is_sparse = _sparse_caller(turns)
     is_generic = _generic_opening(turns)
     floor_correction = _floor_self_correction(turns)
+    # No location signal: extract returned neither building nor floor.
+    # We deliberately don't peek at the profile here — the location-
+    # reconciliation node runs AFTER clarify, so profile fallback is
+    # not yet applied. For voice-mode calls where the caller isn't in
+    # the profile DB, this fires reliably and produces an actionable
+    # clarifying question ("which building and floor?").
+    no_location = (
+        not (extraction.building_name or "").strip()
+        and not (extraction.floor or "").strip()
+    )
 
     if is_sparse:
         reasons.append("sparse_caller:short_first_turn_and_low_total_speech")
@@ -173,6 +194,8 @@ def needs_clarification(
         reasons.append(
             f"floor_self_correction:caller_said_floor_{f1}_then_floor_{f2}"
         )
+    if no_location:
+        reasons.append("no_location:building_and_floor_missing_from_transcript")
 
     needs = bool(reasons)
     question = (
@@ -180,6 +203,7 @@ def needs_clarification(
             floor_correction=floor_correction,
             is_sparse=is_sparse,
             is_generic=is_generic,
+            no_location=no_location,
         )
         if needs
         else None
