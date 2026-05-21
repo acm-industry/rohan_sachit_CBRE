@@ -23,8 +23,9 @@ Each node is fault-isolated:
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import replace
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
 from agent.data import profiles
 from agent.nodes.extract import Extraction, extract
@@ -259,6 +260,531 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     )
 
     # ── Assemble final prediction ────────────────────────────────────
+    return {
+        "category": category,
+        "subcategory": subcategory,
+        "risk_level": risk_level,
+        "needs_human_review": validator_result.needs_human_review,
+        "needs_clarification": need_clarification,
+        "building_name": location.building_name,
+        "address": location.address,
+        "floor": location.floor,
+        "dispatched_vendor_id": vendor.vendor_id,
+        "dispatched_emergency_services": validator_result.dispatched_emergency_services,
+        "call_summary": summary,
+        "trainer_log": trainer_log,
+    }
+
+
+# ─── Events-aware sibling ──────────────────────────────────────────────
+#
+# `classify_with_events()` mirrors `classify()` but emits per-stage
+# events through an `emitter` callback and optionally pauses at the
+# validator gate for live HITL review. The pipeline contract,
+# fault-isolation policy, and final output dict are identical to
+# `classify()` — only the orchestration shell differs.
+
+Emitter = Callable[[Dict[str, Any]], Union[None, Awaitable[None]]]
+ResumeWaiter = Callable[[], Awaitable[Dict[str, Any]]]
+
+
+async def _emit(emitter: Optional[Emitter], event: Dict[str, Any]) -> None:
+    if emitter is None:
+        return
+    result = emitter(event)
+    if hasattr(result, "__await__"):
+        await result  # type: ignore[func-returns-value]
+
+
+def _stage_event(
+    *,
+    stage: str,
+    status: str,
+    timing_ms: float = 0.0,
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return {
+        "stage": stage,
+        "status": status,
+        "timing_ms": round(timing_ms, 2),
+        "payload": payload or {},
+    }
+
+
+def _retrieved_summaries(record_ids: List[str]) -> List[Dict[str, Any]]:
+    """Best-effort lookup of retrieved tickets for the reviewer payload.
+
+    The classifier records only ticket IDs. For the demo UI we surface a
+    short summary per ID; we read the historical corpus lazily and return
+    `{ticket_id, summary}` pairs, never raising — the demo display
+    degrades gracefully if the corpus isn't on disk.
+    """
+    if not record_ids:
+        return []
+    try:
+        import json
+        from pathlib import Path
+        path = Path(__file__).resolve().parents[1] / "operational" / "historical_records.json"
+        with open(path) as f:
+            corpus = json.load(f)
+        by_id = {r.get("ticket_id"): r for r in corpus if isinstance(r, dict)}
+    except Exception:
+        return [{"ticket_id": tid, "summary": None} for tid in record_ids]
+
+    out: List[Dict[str, Any]] = []
+    for tid in record_ids:
+        rec = by_id.get(tid) or {}
+        summary = (
+            rec.get("resolution_notes")
+            or rec.get("dispatch_notes")
+            or rec.get("intake_notes")
+            or rec.get("caller_transcript")
+            or ""
+        )
+        if isinstance(summary, str) and len(summary) > 200:
+            summary = summary[:197] + "..."
+        out.append({"ticket_id": tid, "summary": summary or None})
+    return out
+
+
+async def classify_with_events(
+    turns: List[dict],
+    caller_phone: Optional[str],
+    emitter: Optional[Emitter] = None,
+    *,
+    pause_at_validator: bool = False,
+    wait_for_resume: Optional[ResumeWaiter] = None,
+) -> Dict[str, Any]:
+    """Run the agent pipeline emitting per-stage events.
+
+    Mirrors `classify()` exactly except that it:
+      - awaits `emitter({stage, status, timing_ms, payload})` at the
+        start and end of every stage (including failures);
+      - when `pause_at_validator=True` and the validator decides
+        `needs_human_review`, emits `validate.gate_open` with the
+        reviewer payload and awaits `wait_for_resume()`. The resume
+        decision (`{"decision": "approve" | "override", "override": ...}`)
+        is applied to the AI's state before continuing.
+
+    The original `classify()` function above is untouched — this sibling
+    only adds the eventing/pause hooks for the live demo.
+    """
+    full_transcript = _flatten(turns)
+
+    async def _err_fallback(stage: str, error: Exception) -> Dict[str, Any]:
+        msg = f"{stage}: {error}"
+        await _emit(emitter, _stage_event(stage=stage, status="failed", payload={"error": str(error)}))
+        fb = _safe_fallback(turns, msg)
+        await _emit(
+            emitter,
+            _stage_event(
+                stage="trainer_log",
+                status="complete",
+                payload={"trainer_log": fb["trainer_log"]},
+            ),
+        )
+        return fb
+
+    # ── Step 1: Extract ──────────────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="extract", status="started"))
+    t0 = time.perf_counter()
+    try:
+        extraction = extract(turns, caller_phone)
+    except Exception as e:
+        logger.error("extraction failed: %s", e)
+        return await _err_fallback("extract", e)
+    extract_ms = (time.perf_counter() - t0) * 1000.0
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="extract",
+            status="complete",
+            timing_ms=extract_ms,
+            payload={
+                "problem_summary": extraction.problem_summary,
+                "building_name": extraction.building_name,
+                "floor": extraction.floor,
+                "suite": extraction.suite,
+                "urgency_cues": list(extraction.urgency_cues),
+                "caller_role": extraction.caller_role,
+                "language": extraction.language,
+                "confidence": {
+                    "problem_summary": extraction.confidence.problem_summary,
+                    "building_name": extraction.confidence.building_name,
+                    "floor": extraction.confidence.floor,
+                    "suite": extraction.confidence.suite,
+                    "caller_role": extraction.confidence.caller_role,
+                },
+            },
+        ),
+    )
+
+    # ── Step 2: Classify (RAG retrieve happens inside) ───────────────
+    await _emit(emitter, _stage_event(stage="retrieve", status="started"))
+    await _emit(emitter, _stage_event(stage="classify", status="started"))
+    t0 = time.perf_counter()
+    try:
+        classification = classify_call(extraction)
+    except Exception as e:
+        logger.error("classification failed: %s", e)
+        await _emit(emitter, _stage_event(stage="retrieve", status="failed", payload={"error": str(e)}))
+        return await _err_fallback("classify", e)
+    classify_ms = (time.perf_counter() - t0) * 1000.0
+
+    retrieved = _retrieved_summaries(list(classification.retrieved_record_ids))
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="retrieve",
+            status="complete",
+            timing_ms=classify_ms,
+            payload={"retrieved": retrieved},
+        ),
+    )
+
+    category = classification.category_str
+    subcategory = classification.subcategory_str
+    confidence_cat = classification.confidence_category
+    confidence_sub = classification.confidence_subcategory
+    min_confidence = min(confidence_cat, confidence_sub)
+
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="classify",
+            status="complete",
+            timing_ms=classify_ms,
+            payload={
+                "category": category,
+                "subcategory": subcategory,
+                "confidence_category": confidence_cat,
+                "confidence_subcategory": confidence_sub,
+                "reasoning": classification.reasoning,
+                "is_fallback": classification.is_fallback,
+            },
+        ),
+    )
+
+    # ── Step 3: Location ─────────────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="location", status="started"))
+    t0 = time.perf_counter()
+    profile = profiles.lookup(caller_phone)
+    try:
+        location = reconcile(
+            extracted_building_name=extraction.building_name,
+            extracted_floor=extraction.floor,
+            building_confidence=extraction.confidence.building_name,
+            floor_confidence=extraction.confidence.floor,
+            profile=profile,
+            caller_phone=caller_phone,
+        )
+    except Exception as e:
+        logger.warning("location reconciliation failed: %s", e)
+        location = ResolvedLocation(
+            building_name=extraction.building_name,
+            address=None,
+            floor=extraction.floor,
+            city=None,
+            building_type=None,
+            floor_check="unknown",
+            source_building="none",
+            source_floor="none",
+        )
+    location_ms = (time.perf_counter() - t0) * 1000.0
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="location",
+            status="complete",
+            timing_ms=location_ms,
+            payload={
+                "building_name": location.building_name,
+                "address": location.address,
+                "floor": location.floor,
+                "city": location.city,
+                "building_type": location.building_type,
+                "floor_check": location.floor_check,
+                "source_building": location.source_building,
+                "source_floor": location.source_floor,
+            },
+        ),
+    )
+
+    # ── Step 4: Risk ─────────────────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="risk", status="started"))
+    t0 = time.perf_counter()
+    try:
+        risk = assign_risk(
+            extraction,
+            subcategory,
+            building_type=location.building_type,
+            after_hours=False,
+            classification_confidence=min_confidence,
+        )
+    except Exception as e:
+        logger.error("risk assignment failed: %s", e)
+        return await _err_fallback("risk", e)
+    risk_ms = (time.perf_counter() - t0) * 1000.0
+    risk_level = risk.band
+    is_emergency = risk_level == "EMERGENCY"
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="risk",
+            status="complete",
+            timing_ms=risk_ms,
+            payload={
+                "risk_level": risk_level,
+                "risk_reasons": list(risk.reasons),
+                "base_risk": risk.base_risk,
+                "score": risk.score,
+            },
+        ),
+    )
+
+    # ── Step 5: Validator gate ───────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="validate", status="started"))
+    fallback_invoked = classification.is_fallback
+    t0 = time.perf_counter()
+    try:
+        validator_result = validate(
+            subcategory=subcategory,
+            risk_level=risk_level,
+            classification_confidence=min_confidence,
+            fallback_invoked=fallback_invoked,
+            extracted_urgency_cues=extraction.urgency_cues,
+            transcript_text=full_transcript,
+        )
+    except Exception as e:
+        logger.warning("validator failed: %s", e)
+        validator_result = ValidatorResult(
+            needs_human_review=True,
+            dispatched_emergency_services=False,
+            reasons=[f"validator_error:{e}"],
+        )
+    validate_ms = (time.perf_counter() - t0) * 1000.0
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="validate",
+            status="complete",
+            timing_ms=validate_ms,
+            payload={
+                "needs_human_review": validator_result.needs_human_review,
+                "dispatched_emergency_services": validator_result.dispatched_emergency_services,
+                "validator_reasons": list(validator_result.reasons),
+            },
+        ),
+    )
+
+    # ── HITL pause point ─────────────────────────────────────────────
+    human_override: Optional[Dict[str, Any]] = None
+    if pause_at_validator and validator_result.needs_human_review:
+        ai_pred_preview = {
+            "category": category,
+            "subcategory": subcategory,
+            "risk_level": risk_level,
+            "needs_human_review": True,
+            "dispatched_emergency_services": validator_result.dispatched_emergency_services,
+            "building_name": location.building_name,
+            "address": location.address,
+            "floor": location.floor,
+            "confidence_category": confidence_cat,
+            "confidence_subcategory": confidence_sub,
+        }
+        await _emit(
+            emitter,
+            _stage_event(
+                stage="validate",
+                status="gate_open",
+                payload={
+                    "ai_prediction": ai_pred_preview,
+                    "validator_reasons": list(validator_result.reasons),
+                    "reasoning": classification.reasoning,
+                    "retrieved": retrieved,
+                    "transcript": full_transcript,
+                },
+            ),
+        )
+
+        if wait_for_resume is None:
+            raise RuntimeError(
+                "pause_at_validator=True requires wait_for_resume callable"
+            )
+        decision = await wait_for_resume()
+        action = (decision or {}).get("decision", "approve")
+        override = (decision or {}).get("override") or {}
+        await _emit(
+            emitter,
+            _stage_event(
+                stage="validate",
+                status="gate_resumed",
+                payload={"decision": action, "override": override or None},
+            ),
+        )
+
+        if action == "override" and override:
+            human_override = dict(override)
+            # Apply override fields onto the AI state used by downstream nodes.
+            if "category" in override:
+                category = override["category"]
+            if "subcategory" in override:
+                subcategory = override["subcategory"]
+            if "risk_level" in override:
+                risk_level = override["risk_level"]
+                is_emergency = risk_level == "EMERGENCY"
+            if "dispatched_emergency_services" in override:
+                validator_result = replace(
+                    validator_result,
+                    dispatched_emergency_services=bool(
+                        override["dispatched_emergency_services"]
+                    ),
+                )
+            if "needs_human_review" in override:
+                validator_result = replace(
+                    validator_result,
+                    needs_human_review=bool(override["needs_human_review"]),
+                )
+
+    # ── Step 6: Vendor selection ─────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="vendor", status="started"))
+    t0 = time.perf_counter()
+    try:
+        vendor = select_vendor(
+            subcategory=subcategory,
+            city=location.city,
+            building_type=location.building_type,
+            risk_level=risk_level,
+            is_emergency=is_emergency,
+            after_hours=False,
+        )
+    except Exception as e:
+        logger.warning("vendor selection failed: %s", e)
+        vendor = VendorSelection(vendor_id=None, vendor_name=None, reason=f"error:{e}")
+    vendor_ms = (time.perf_counter() - t0) * 1000.0
+
+    # Apply vendor override if the reviewer specified one.
+    if human_override and "dispatched_vendor_id" in human_override:
+        vendor = VendorSelection(
+            vendor_id=human_override["dispatched_vendor_id"],
+            vendor_name=vendor.vendor_name,
+            reason="human_override",
+        )
+
+    if vendor.vendor_id is None and not validator_result.needs_human_review:
+        validator_result = replace(
+            validator_result,
+            needs_human_review=True,
+            reasons=[*validator_result.reasons, "vendor_escalation:no_qualified_vendor"],
+        )
+
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="vendor",
+            status="complete",
+            timing_ms=vendor_ms,
+            payload={
+                "vendor_id": vendor.vendor_id,
+                "vendor_name": vendor.vendor_name,
+                "reasoning": vendor.reason,
+            },
+        ),
+    )
+
+    # ── Step 7: Clarification ────────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="clarify", status="started"))
+    t0 = time.perf_counter()
+    try:
+        clarification = needs_clarification(
+            turns, extraction, classification, caller_phone=caller_phone
+        )
+    except Exception as e:
+        logger.warning("clarification check failed: %s", e)
+        clarification = ClarificationDecision(
+            needs_clarification=False, question=None, reasons=()
+        )
+    clarify_ms = (time.perf_counter() - t0) * 1000.0
+    need_clarification = (
+        clarification.needs_clarification or location.needs_clarification
+    )
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="clarify",
+            status="complete",
+            timing_ms=clarify_ms,
+            payload={
+                "needs_clarification": need_clarification,
+                "question": clarification.question,
+                "reasons": list(clarification.reasons),
+            },
+        ),
+    )
+
+    # ── Step 8: Summary ──────────────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="summary", status="started"))
+    t0 = time.perf_counter()
+    unroutable = vendor.vendor_id is None and validator_result.needs_human_review
+    summary = generate_summary(
+        subcategory=subcategory,
+        risk_level=risk_level,
+        building_name=location.building_name,
+        floor=location.floor,
+        city=location.city,
+        vendor_name=vendor.vendor_name,
+        vendor_id=vendor.vendor_id,
+        dispatched_emergency_services=validator_result.dispatched_emergency_services,
+        needs_human_review=validator_result.needs_human_review,
+        unroutable=unroutable,
+    )
+    summary_ms = (time.perf_counter() - t0) * 1000.0
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="summary",
+            status="complete",
+            timing_ms=summary_ms,
+            payload={"call_summary": summary},
+        ),
+    )
+
+    # ── Step 9: Trainer log ──────────────────────────────────────────
+    await _emit(emitter, _stage_event(stage="trainer_log", status="started"))
+    ai_pred = build_ai_prediction(
+        category=category,
+        subcategory=subcategory,
+        risk_level=risk_level,
+        dispatched_vendor_id=vendor.vendor_id,
+        dispatched_emergency_services=validator_result.dispatched_emergency_services,
+        needs_human_review=validator_result.needs_human_review,
+        needs_clarification=need_clarification,
+        confidence_category=confidence_cat,
+        confidence_subcategory=confidence_sub,
+        validator_reasons=list(validator_result.reasons),
+        risk_reasons=list(risk.reasons),
+        retrieved_record_ids=list(classification.retrieved_record_ids),
+    )
+
+    final_decision = dict(ai_pred)
+    if human_override:
+        final_decision.update(human_override)
+
+    trainer_log = assemble_trainer_log(
+        full_transcript=full_transcript,
+        ai_prediction=ai_pred,
+        human_override=human_override,
+        final_decision=final_decision if human_override else None,
+    )
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="trainer_log",
+            status="complete",
+            payload={"trainer_log": trainer_log},
+        ),
+    )
+
     return {
         "category": category,
         "subcategory": subcategory,

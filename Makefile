@@ -1,4 +1,4 @@
-.PHONY: help test test-contract test-fast test-llm install build-index lint
+.PHONY: help test test-contract test-fast test-llm test-backend install build-index lint demo backend-only frontend-only
 
 PY ?= python3
 VENV ?= .venv
@@ -39,3 +39,31 @@ test: test-fast  ## Default `make test` runs the fast suite (CI gate). LLM tests
 
 lint:  ## (placeholder) Add ruff / mypy here if/when adopted.
 	@echo "no linter configured yet"
+
+# ─── Live demo targets ────────────────────────────────────────────────
+
+test-backend:  ## Run the backend route + classify_with_events tests
+	$(VENV_PY) -m pytest tests/test_backend_routes.py tests/test_classify_with_events.py tests/test_classify_unchanged.py -q
+
+backend-only:  ## Start FastAPI on :8000 (demo backend only)
+	$(VENV_PY) -m uvicorn backend.main:app --reload --port 8000
+
+frontend-only:  ## Start Next.js on :3000 if frontend/ exists
+	@if [ -d frontend ]; then \
+		cd frontend && npm run dev; \
+	else \
+		echo "frontend/ does not exist yet — backend-only for now"; \
+	fi
+
+demo:  ## Start backend (:8000) and frontend (:3000) together; Ctrl-C tears both down
+	@echo ">>> starting CBRE HITL live demo (backend :8000, frontend :3000)"
+	@trap 'echo; echo ">>> stopping demo"; kill 0' INT TERM EXIT; \
+	$(VENV_PY) -m uvicorn backend.main:app --port 8000 & \
+	BACKEND_PID=$$!; \
+	if [ -d frontend ]; then \
+		(cd frontend && npm run dev) & \
+		FRONTEND_PID=$$!; \
+	else \
+		echo ">>> frontend/ not found, running backend-only"; \
+	fi; \
+	wait $$BACKEND_PID
