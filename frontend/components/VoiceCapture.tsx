@@ -137,6 +137,14 @@ export function VoiceCapture({
   };
 
   const stop = async () => {
+    // Grace period: keep the mic open for ~300ms after the click so we
+    // capture trailing syllables instead of clipping the caller mid-word.
+    // Without auto-stop (VAD), this is the cheapest way to make the
+    // click-to-stop UX more forgiving — the demo audience won't notice
+    // the lag, but Deepgram will see a full sentence instead of a cut-off.
+    setStatus("finishing up…");
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
+
     setStatus("processing...");
     sourceRef.current?.disconnect();
     processorRef.current?.disconnect();
