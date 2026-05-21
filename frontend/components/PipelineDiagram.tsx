@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useRef } from "react";
 import { PIPELINE_STAGES, type CallState, type PipelineStage, type Stage, type StageNodeState } from "@/lib/types";
 
 type Props = {
@@ -79,6 +80,50 @@ export default function PipelineDiagram({
   selectedStage,
   onSelectStage,
 }: Props) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const stageRefs = useRef<Record<PipelineStage, HTMLLIElement | null>>(
+    {} as Record<PipelineStage, HTMLLIElement | null>,
+  );
+
+  // The latest stage with any state — the one to scroll into view as the
+  // pipeline progresses. We walk PIPELINE_STAGES in reverse so a brand-new
+  // "started" event on stage N wins over an older "complete" on stage N-1.
+  const latestStage = useMemo<PipelineStage | null>(() => {
+    for (let i = PIPELINE_STAGES.length - 1; i >= 0; i--) {
+      if (stages[PIPELINE_STAGES[i]]) return PIPELINE_STAGES[i];
+    }
+    return null;
+  }, [stages]);
+
+  useEffect(() => {
+    if (!latestStage) return;
+    const scroller = scrollerRef.current;
+    const el = stageRefs.current[latestStage];
+    if (!scroller || !el) return;
+
+    // Only scroll the pipeline container — never the page. We compute
+    // the overshoot ourselves rather than calling scrollIntoView, which
+    // can scroll any ancestor that needs it.
+    const scrollerRect = scroller.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const padding = 24;
+
+    if (elRect.right > scrollerRect.right - padding) {
+      const overshoot = elRect.right - scrollerRect.right + padding;
+      scroller.scrollTo({
+        left: scroller.scrollLeft + overshoot,
+        behavior: "smooth",
+      });
+    } else if (elRect.left < scrollerRect.left + padding) {
+      // If user scrolled past it (e.g. clicked an earlier node), scroll back.
+      const undershoot = scrollerRect.left + padding - elRect.left;
+      scroller.scrollTo({
+        left: scroller.scrollLeft - undershoot,
+        behavior: "smooth",
+      });
+    }
+  }, [latestStage]);
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
@@ -87,7 +132,7 @@ export default function PipelineDiagram({
           {PIPELINE_STAGES.length} stages · click to inspect
         </span>
       </div>
-      <div className="overflow-x-auto">
+      <div ref={scrollerRef} className="overflow-x-auto">
         <ol className="flex items-stretch gap-2 min-w-max pb-2">
           {PIPELINE_STAGES.map((stage, i) => {
             const node = stages[stage];
@@ -95,7 +140,13 @@ export default function PipelineDiagram({
             const colors = colorsFor(node, isSelected);
             const clickable = !!node;
             return (
-              <li key={stage} className="flex items-center">
+              <li
+                key={stage}
+                ref={(el) => {
+                  stageRefs.current[stage] = el;
+                }}
+                className="flex items-center"
+              >
                 <button
                   type="button"
                   disabled={!clickable}
