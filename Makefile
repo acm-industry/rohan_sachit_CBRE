@@ -48,22 +48,20 @@ test-backend:  ## Run the backend route + classify_with_events tests
 backend-only:  ## Start FastAPI on :8000 (demo backend only)
 	$(VENV_PY) -m uvicorn backend.main:app --reload --port 8000
 
-frontend-only:  ## Start Next.js on :3000 if frontend/ exists
+frontend-only:  ## Start Next.js on :3000 (issue-demo-frontend)
 	@if [ -d frontend ]; then \
-		cd frontend && npm run dev; \
+		cd frontend && (npm install --silent && npm run dev); \
 	else \
-		echo "frontend/ does not exist yet — backend-only for now"; \
+		echo "frontend/ does not exist yet"; exit 1; \
 	fi
 
 demo:  ## Start backend (:8000) and frontend (:3000) together; Ctrl-C tears both down
 	@echo ">>> starting CBRE HITL live demo (backend :8000, frontend :3000)"
 	@trap 'echo; echo ">>> stopping demo"; kill 0' INT TERM EXIT; \
 	$(VENV_PY) -m uvicorn backend.main:app --port 8000 & \
-	BACKEND_PID=$$!; \
 	if [ -d frontend ]; then \
 		(cd frontend && npm run dev) & \
-		FRONTEND_PID=$$!; \
 	else \
 		echo ">>> frontend/ not found, running backend-only"; \
 	fi; \
-	wait $$BACKEND_PID
+	wait
