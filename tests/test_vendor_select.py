@@ -112,10 +112,13 @@ def test_offline_but_stale_confirmation_is_not_blocked():
     # (It need not be selected — only no longer force-filtered.)
 
 
-def test_at_capacity_skipped_on_emergency_unroutable():
+def test_at_capacity_dispatched_on_emergency():
     """gas_chemical/Escondido EMERGENCY: the only vendor within the 30min
-    emergency SLA (v_021) is at_capacity → skipped on an emergency →
-    unroutable."""
+    emergency SLA (v_021) is at_capacity. Per design doc §6.4, the stale
+    cache is a SOFT signal — dispatching the at_capacity vendor is
+    better than escalating to nothing when no other qualified vendor
+    exists. (Was previously hard-skipped; doc/code disagreement
+    reconciled in the lever-2 PR.)"""
     _reset()
     v21 = get_by_id("v_021")
     assert v21.status_at_last_check == "at_capacity"
@@ -123,9 +126,8 @@ def test_at_capacity_skipped_on_emergency_unroutable():
         subcategory="gas_chemical", city="Escondido", building_type="office",
         risk_level="EMERGENCY", is_emergency=True,
     )
-    assert sel.vendor_id is None
-    assert sel.needs_human_review is True
-    assert "manual reroute" in sel.reason
+    assert sel.vendor_id == "v_021"
+    assert sel.needs_human_review is False
 
 
 def test_at_capacity_allowed_on_routine():
@@ -139,16 +141,18 @@ def test_at_capacity_allowed_on_routine():
     assert sel.vendor_id == "v_021"  # at_capacity, but allowed routine
 
 
-def test_all_candidates_at_capacity_emergency_unroutable():
-    """AC 'all candidates at_capacity': on an emergency every at_capacity
-    vendor is skipped → unroutable with needs_human_review."""
+def test_all_candidates_at_capacity_emergency_still_dispatched():
+    """AC 'all candidates at_capacity': stale cache treated as soft signal,
+    so the agent dispatches the best-ranked at_capacity vendor rather
+    than escalating to a human (which on an emergency means dispatching
+    nothing while seconds count). Reconciles the code with §6.4."""
     _reset()
     sel = select_vendor(
         subcategory="gas_chemical", city="Escondido", building_type="office",
         risk_level="EMERGENCY", is_emergency=True,
     )
-    assert sel.vendor_id is None
-    assert sel.needs_human_review is True
+    assert sel.vendor_id is not None
+    assert sel.needs_human_review is False
 
 
 def test_all_stale_available_still_selectable():

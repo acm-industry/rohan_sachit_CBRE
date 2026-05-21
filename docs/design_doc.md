@@ -624,18 +624,23 @@ constraint:
 
 | bucket | count | nature |
 |--------|-------|--------|
-| emergency: all acceptable vendors `at_capacity` → unroutable | 13 | **AC-mandated (#21)** — policy decision, not a bug |
+| emergency: all acceptable vendors `at_capacity` → unroutable | 13 | **resolved** — was a code/doc disagreement, see note below |
 | escalated though a vendor was acceptable | 7 | bug |
 | city-coverage miss | 6 | bug |
 | unroutable not escalated | 4 | bug |
 | specialty miss | 1 | bug |
 
-The 13-row emergency bucket is the issue #21 contract (an at-capacity
-crew must **not** be dispatched to a gas leak); the dev oracle's
-`acceptable_vendor_ids` predate that rule, so they score as misses but
-the behaviour is correct. → **#66** (the 13 real bugs) and **#67** (the
-emergency/at_capacity trust-model decision — reconcile in §6, do **not**
-weaken the skip).
+The 13-row emergency bucket was originally framed as the issue #21 AC
+("don't dispatch at-capacity on a gas leak"). On re-reading §6.4, the
+documented design treats `at_capacity` as a **soft signal** ("ranked
+last but still in the candidate set") because the brief says the cache
+is intentionally stale. The vendor-selection code was hard-filtering
+at_capacity for emergencies — a doc/code disagreement, not a
+deliberate stricter-than-doc policy. Reconciled in the levers PR by
+removing the hard filter; on an emergency where the only qualified
+vendor is at_capacity, dispatching it is strictly better than
+escalating to nothing while seconds count. → **#66** (the 7+6+4+1 = 18
+real bugs remain).
 
 ### 9.5 Auto-resolution
 
@@ -652,7 +657,7 @@ clarification-policy iteration for #26.
 | **#64** | HITL over-escalation (16 FP) | hitl_f1 (15%) | `type:feature` `p2` |
 | **#65** | building/address co-fail on 22 rows | fields (10%) | `type:bug` `p1` |
 | **#66** | vendor: 7 needless escalations + 6 city misses | vendor (10%) | `type:bug` `p1` |
-| **#67** | 13 emergencies unroutable (all at_capacity) — policy | vendor (10%) | `type:feature` `p2` |
+| **#67** | 13 emergencies unroutable (all at_capacity) — **resolved**, see §9.4 | vendor (10%) | `type:feature` `p2` (closed) |
 
 Secondary (deferred to #26): `risk_level` is 84% but weak on `edge` /
 `clarification` case types — the next tier after the HITL and field
