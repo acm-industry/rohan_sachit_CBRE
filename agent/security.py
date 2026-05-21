@@ -18,8 +18,8 @@ from typing import List, Optional, Tuple
 _INJECTION_PATTERNS: Tuple[re.Pattern, ...] = tuple(
     re.compile(p, re.IGNORECASE) for p in (
         r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?|context)",
-        r"disregard\s+(all\s+)?(previous|prior|above|your)\s+(instructions?|prompts?|rules?)",
-        r"forget\s+(all\s+)?(previous|prior|above|your)\s+(instructions?|prompts?|rules?)",
+        r"disregard\s+(all\s+|your\s+)?(previous|prior|above|your)\s+(instructions?|prompts?|rules?)",
+        r"forget\s+(all\s+|your\s+)?(previous|prior|above|your)\s+(instructions?|prompts?|rules?)",
         r"you\s+are\s+now\s+(?:a|an|my)\s+(?!tenant|caller|agent)",
         r"new\s+instructions?:\s*",
         r"system\s*(?:prompt|message)\s*:",
