@@ -278,9 +278,34 @@ location:        {building_name} / {floor} / {suite}
   lighting → GROUNDS_EXTERIOR/parking_lighting. The taxonomy splits indoor
   vs outdoor lighting fixtures across two different categories.
 
+- ELECTRICAL/lighting vs ELECTRICAL/power_outage: "lighting" is for problems
+  with specific FIXTURES (bulbs out, flickering, ballast hum, single fixture
+  dead). When ALL lights on a floor or wing go dark — or anything else
+  loses power simultaneously (outlets, equipment, screens) — that's a
+  power_outage, not a lighting issue. The distinguishing test: is the failure
+  scoped to lights specifically (→ lighting), or did multiple loads drop at
+  once on shared circuitry (→ power_outage)?
+
 - Roof or ceiling water intrusion (including ceiling tiles falling because of
   water) → PLUMBING/roof_leak. The cause is water from above. Falling tile is a
   symptom, not the category.
+
+- PLUMBING/roof_leak vs PLUMBING/pipe_leak: roof_leak is for water entering
+  from outside the building envelope (rain, weather, water drainage from
+  upstairs through floor/ceiling — i.e. NO identified internal source).
+  pipe_leak is for water escaping from a specific internal pipe, fixture,
+  valve, or fitting (sink, toilet, water heater, supply line, sprinkler
+  riser). When the caller names or describes a specific plumbing component
+  → pipe_leak. When the caller says "water from the ceiling" with no
+  identified plumbing source overhead → roof_leak.
+
+- HVAC/refrigerant vs HVAC/no_cooling: refrigerant is for evidence of
+  chemical-coolant escape — caller reports a chemical smell near the AC,
+  oily residue around the unit, hissing from refrigerant lines, or visible
+  ice/frost on the coil. no_cooling is for "the AC just isn't cooling"
+  with NO chemical signature — thermostat unresponsive, vent blowing warm
+  air, temperature creeping up. SMELL near an AC unit is the strongest
+  refrigerant signal; absence of smell + warm air = no_cooling.
 
 # OVER-ESCALATION GUARD (FINAL EMPHASIS — high-stakes; false alarms are heavily penalised)
 
