@@ -258,6 +258,8 @@ def test_safe_fallback_final_decision_mirrors_base():
     assert tl["human_override"] is None
     assert tl["final_decision"]["needs_human_review"] is True
     assert tl["final_decision"]["dispatched_emergency_services"] is False
+    assert tl["final_decision"]["call_summary"] == result["call_summary"]
+    assert tl["final_decision"]["building_name"] == result["building_name"]
 
 
 # ─── Happy-path orchestrator glue ──────────────────────────────────────
@@ -424,6 +426,27 @@ def test_trainer_log_carries_retrieved_record_ids():
     )
     ai_pred = result["trainer_log"]["ai_prediction"]
     assert ai_pred["retrieved_record_ids"] == ["TKT-A", "TKT-B", "TKT-C"]
+
+
+def test_trainer_log_final_decision_is_complete_prediction_snapshot():
+    """The final decision carries the full top-level prediction, not only model internals."""
+    result = _run()
+    final_decision = result["trainer_log"]["final_decision"]
+    for key in REQUIRED_KEYS - {"trainer_log"}:
+        assert final_decision[key] == result[key]
+
+
+def test_trainer_log_ai_prediction_carries_training_context():
+    result = _run()
+    ai_pred = result["trainer_log"]["ai_prediction"]
+    assert ai_pred["building_name"] == result["building_name"]
+    assert ai_pred["address"] == result["address"]
+    assert ai_pred["floor"] == result["floor"]
+    assert ai_pred["call_summary"] == result["call_summary"]
+    assert ai_pred["reasoning"] == "stub"
+    assert ai_pred["classification_reasoning"] == "stub"
+    assert ai_pred["hitl_reasons"] == ai_pred["validator_reasons"]
+    assert "clarification_reasons" in ai_pred
 
 
 def test_trainer_log_handles_empty_record_ids():

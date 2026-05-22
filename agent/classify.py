@@ -91,6 +91,24 @@ def _flatten(turns: List[dict]) -> str:
     )
 
 
+def _decision_snapshot(prediction: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the top-level decision fields without embedding trainer_log."""
+    keys = (
+        "category",
+        "subcategory",
+        "risk_level",
+        "needs_human_review",
+        "needs_clarification",
+        "building_name",
+        "address",
+        "floor",
+        "dispatched_vendor_id",
+        "dispatched_emergency_services",
+        "call_summary",
+    )
+    return {k: prediction.get(k) for k in keys}
+
+
 def _safe_fallback(
     turns: List[dict],
     error: str,
@@ -122,16 +140,30 @@ def _safe_fallback(
         "dispatched_emergency_services": False,
         "call_summary": f"Pipeline error: {error}. Escalated to human reviewer.",
     }
-    ai_pred = base.copy()
     src = timings or {}
-    ai_pred["latency_ms"] = {name: src.get(name, 0.0) for name in STAGE_NAMES}
+    ai_pred = build_ai_prediction(
+        category=base["category"],
+        subcategory=base["subcategory"],
+        risk_level=base["risk_level"],
+        needs_human_review=base["needs_human_review"],
+        needs_clarification=base["needs_clarification"],
+        building_name=base["building_name"],
+        address=base["address"],
+        floor=base["floor"],
+        dispatched_vendor_id=base["dispatched_vendor_id"],
+        dispatched_emergency_services=base["dispatched_emergency_services"],
+        call_summary=base["call_summary"],
+        classification_reasoning=f"Pipeline error: {error}",
+        validator_reasons=[f"safe_fallback:{error}"],
+        latency_ms={name: src.get(name, 0.0) for name in STAGE_NAMES},
+    )
     return {
         **base,
         "trainer_log": {
             "full_transcript": full_transcript,
             "ai_prediction": ai_pred,
             "human_override": None,
-            "final_decision": ai_pred.copy(),
+            "final_decision": base.copy(),
         },
     }
 
@@ -322,6 +354,14 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     need_clarification = (
         clarification.needs_clarification or location.needs_clarification
     )
+    clarification_reasons = list(clarification.reasons)
+    if location.needs_clarification:
+        clarification_reasons.append(
+            f"location_floor_out_of_range:{location.floor or 'unknown'}"
+        )
+    clarification_question = clarification.question
+    if location.needs_clarification and not clarification_question:
+        clarification_question = "Can you confirm which floor the issue is on?"
 
     # ── Step 8: Summary ──────────────────────────────────────────────
     unroutable = vendor.vendor_id is None and validator_result.needs_human_review
@@ -345,19 +385,40 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
     timings["total"] = round((time.perf_counter() - _t_total_start) * 1000.0, 3)
     latency_ms = {name: timings.get(name, 0.0) for name in STAGE_NAMES}
 
+    final_prediction = {
+        "category": category,
+        "subcategory": subcategory,
+        "risk_level": risk_level,
+        "needs_human_review": validator_result.needs_human_review,
+        "needs_clarification": need_clarification,
+        "building_name": location.building_name,
+        "address": location.address,
+        "floor": location.floor,
+        "dispatched_vendor_id": vendor.vendor_id,
+        "dispatched_emergency_services": validator_result.dispatched_emergency_services,
+        "call_summary": summary,
+    }
+
     # ── Step 9: Trainer log ──────────────────────────────────────────
     ai_pred = build_ai_prediction(
         category=category,
         subcategory=subcategory,
         risk_level=risk_level,
-        dispatched_vendor_id=vendor.vendor_id,
-        dispatched_emergency_services=validator_result.dispatched_emergency_services,
         needs_human_review=validator_result.needs_human_review,
         needs_clarification=need_clarification,
+        building_name=location.building_name,
+        address=location.address,
+        floor=location.floor,
+        dispatched_vendor_id=vendor.vendor_id,
+        dispatched_emergency_services=validator_result.dispatched_emergency_services,
+        call_summary=summary,
         confidence_category=confidence_cat,
         confidence_subcategory=confidence_sub,
+        classification_reasoning=classification.reasoning,
         validator_reasons=list(validator_result.reasons),
         risk_reasons=list(risk.reasons),
+        clarification_reasons=clarification_reasons,
+        clarification_question=clarification_question,
         retrieved_record_ids=list(classification.retrieved_record_ids),
         latency_ms=latency_ms,
     )
@@ -370,22 +431,12 @@ def classify(turns: List[dict], caller_phone: Optional[str]) -> Dict[str, Any]:
         full_transcript=safe_transcript,
         ai_prediction=ai_pred,
         human_override=None,
-        final_decision=None,
+        final_decision=final_prediction.copy(),
     )
 
     # ── Assemble final prediction ────────────────────────────────────
     return {
-        "category": category,
-        "subcategory": subcategory,
-        "risk_level": risk_level,
-        "needs_human_review": validator_result.needs_human_review,
-        "needs_clarification": need_clarification,
-        "building_name": location.building_name,
-        "address": location.address,
-        "floor": location.floor,
-        "dispatched_vendor_id": vendor.vendor_id,
-        "dispatched_emergency_services": validator_result.dispatched_emergency_services,
-        "call_summary": summary,
+        **final_prediction,
         "trainer_log": trainer_log,
     }
 
@@ -822,6 +873,14 @@ async def classify_with_events(
     need_clarification = (
         clarification.needs_clarification or location.needs_clarification
     )
+    clarification_reasons = list(clarification.reasons)
+    if location.needs_clarification:
+        clarification_reasons.append(
+            f"location_floor_out_of_range:{location.floor or 'unknown'}"
+        )
+    clarification_question = clarification.question
+    if location.needs_clarification and not clarification_question:
+        clarification_question = "Can you confirm which floor the issue is on?"
     await _emit(
         emitter,
         _stage_event(
@@ -865,41 +924,7 @@ async def classify_with_events(
 
     # ── Step 9: Trainer log ──────────────────────────────────────────
     await _emit(emitter, _stage_event(stage="trainer_log", status="started"))
-    ai_pred = build_ai_prediction(
-        category=category,
-        subcategory=subcategory,
-        risk_level=risk_level,
-        dispatched_vendor_id=vendor.vendor_id,
-        dispatched_emergency_services=validator_result.dispatched_emergency_services,
-        needs_human_review=validator_result.needs_human_review,
-        needs_clarification=need_clarification,
-        confidence_category=confidence_cat,
-        confidence_subcategory=confidence_sub,
-        validator_reasons=list(validator_result.reasons),
-        risk_reasons=list(risk.reasons),
-        retrieved_record_ids=list(classification.retrieved_record_ids),
-    )
-
-    final_decision = dict(ai_pred)
-    if human_override:
-        final_decision.update(human_override)
-
-    trainer_log = assemble_trainer_log(
-        full_transcript=full_transcript,
-        ai_prediction=ai_pred,
-        human_override=human_override,
-        final_decision=final_decision if human_override else None,
-    )
-    await _emit(
-        emitter,
-        _stage_event(
-            stage="trainer_log",
-            status="complete",
-            payload={"trainer_log": trainer_log},
-        ),
-    )
-
-    return {
+    final_prediction = {
         "category": category,
         "subcategory": subcategory,
         "risk_level": risk_level,
@@ -911,5 +936,45 @@ async def classify_with_events(
         "dispatched_vendor_id": vendor.vendor_id,
         "dispatched_emergency_services": validator_result.dispatched_emergency_services,
         "call_summary": summary,
+    }
+    ai_pred = build_ai_prediction(
+        category=category,
+        subcategory=subcategory,
+        risk_level=risk_level,
+        needs_human_review=validator_result.needs_human_review,
+        needs_clarification=need_clarification,
+        building_name=location.building_name,
+        address=location.address,
+        floor=location.floor,
+        dispatched_vendor_id=vendor.vendor_id,
+        dispatched_emergency_services=validator_result.dispatched_emergency_services,
+        call_summary=summary,
+        confidence_category=confidence_cat,
+        confidence_subcategory=confidence_sub,
+        classification_reasoning=classification.reasoning,
+        validator_reasons=list(validator_result.reasons),
+        risk_reasons=list(risk.reasons),
+        clarification_reasons=clarification_reasons,
+        clarification_question=clarification_question,
+        retrieved_record_ids=list(classification.retrieved_record_ids),
+    )
+
+    trainer_log = assemble_trainer_log(
+        full_transcript=full_transcript,
+        ai_prediction=ai_pred,
+        human_override=human_override,
+        final_decision=final_prediction.copy(),
+    )
+    await _emit(
+        emitter,
+        _stage_event(
+            stage="trainer_log",
+            status="complete",
+            payload={"trainer_log": trainer_log},
+        ),
+    )
+
+    return {
+        **final_prediction,
         "trainer_log": trainer_log,
     }
