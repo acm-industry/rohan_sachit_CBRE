@@ -39,6 +39,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evaluation"))
@@ -51,6 +53,7 @@ sys.path.insert(0, str(ROOT / "evaluation"))
 # seconds and burns API budget. With these stubs the test completes in
 # <5s without OPENAI_API_KEY, matching the issue #2 AC.
 import agent.config  # noqa: E402
+import agent.classify as _orchestrator  # noqa: E402
 import agent.nodes.classify as _classify_node  # noqa: E402
 import agent.nodes.extract as _extract_node  # noqa: E402
 import agent.rag.retriever  # noqa: E402
@@ -98,18 +101,23 @@ class _StubChat:
         return _Inv()
 
 
-# `agent.nodes.classify` does `from agent.rag.retriever import retrieve`
-# at module level, so the function is bound *locally* in that module —
-# we must patch the local name, not just the source module's attribute.
-# `build_chat_llm` is accessed via `config.build_chat_llm(...)` in both
-# extract and classify, so patching the source module suffices for it.
-agent.config.build_chat_llm = lambda settings=None: _StubChat()
-agent.rag.retriever.retrieve = lambda *_a, **_kw: []
-_classify_node.retrieve = lambda *_a, **_kw: []
-_extract_node.config = agent.config  # be paranoid: re-bind module ref
-
 from agent.classify import classify  # noqa: E402
 from prediction import Prediction, TrainerLog  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _stub_llm_and_rag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scope contract-test stubs to this module only.
+
+    Earlier versions patched these module globals at import time, which made
+    unrelated API-key-gated tests inherit the contract-test stub LLM.
+    """
+    empty_retrieval = lambda *_a, **_kw: []
+    monkeypatch.setattr(agent.config, "build_chat_llm", lambda settings=None: _StubChat())
+    monkeypatch.setattr(agent.rag.retriever, "retrieve", empty_retrieval)
+    monkeypatch.setattr(_classify_node, "retrieve", empty_retrieval)
+    monkeypatch.setattr(_orchestrator, "retrieve", empty_retrieval)
+    monkeypatch.setattr(_extract_node, "config", agent.config)
 
 
 RISK_LEVELS = frozenset({"LOW", "MEDIUM", "HIGH", "EMERGENCY"})

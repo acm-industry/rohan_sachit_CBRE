@@ -31,6 +31,23 @@ VoiceSession: Any = None
 
 try:  # pragma: no cover — depends on peer's package being installed
     from voice import VoiceSession as _RealVoiceSession  # type: ignore
+    import voice.session as _voice_session  # type: ignore
+
+    _missing_sdks = [
+        name
+        for name in (
+            "DeepgramClient",
+            "LiveOptions",
+            "LiveTranscriptionEvents",
+            "AsyncElevenLabs",
+        )
+        if getattr(_voice_session, name, None) is None
+    ]
+    if _missing_sdks:
+        raise ImportError(
+            "optional voice SDKs missing: " + ", ".join(_missing_sdks)
+        )
+
     VoiceSession = _RealVoiceSession
     VOICE_AVAILABLE = True
     logger.info("voice integration: peer's VoiceSession loaded")

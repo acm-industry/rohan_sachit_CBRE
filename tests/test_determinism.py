@@ -13,6 +13,7 @@ real-LLM smoke test for end-to-end reproducibility lives in
 from __future__ import annotations
 
 import ast
+import copy
 import os
 import re
 import sys
@@ -85,14 +86,6 @@ def test_classify_is_deterministic_for_identical_input():
     identical output. Real-LLM end-to-end reproducibility is covered
     separately by `test_classify.py` (API-key-gated).
     """
-    # Issue #27: the orchestrator now retrieves before classify so the
-    # chroma roundtrip can be timed separately. That bypasses the
-    # `_classify_node.retrieve` stub below — when chroma is missing
-    # (CI), the live retrieve raises and the pipeline falls into
-    # `_safe_fallback` with a non-deterministic `latency_ms.total`,
-    # which breaks the equality check. Skip cleanly in that case.
-    if not (REPO_ROOT / "agent" / "rag" / "chroma_store" / "chroma.sqlite3").exists():
-        return  # CI: RAG store not built; skip live-retrieve determinism check
     import agent.config
     import agent.nodes.classify as _classify_node
     from agent.nodes.classify import (
@@ -128,9 +121,11 @@ def test_classify_is_deterministic_for_identical_input():
             return _Inv()
 
     orig_build = agent.config.build_chat_llm
-    orig_retrieve = _classify_node.retrieve
+    orig_classify_retrieve = _classify_node.retrieve
+    orig_orchestrator_retrieve = classify_module.retrieve
     agent.config.build_chat_llm = lambda settings=None: _StubChat()
     _classify_node.retrieve = lambda *_a, **_kw: []
+    classify_module.retrieve = lambda *_a, **_kw: []
     try:
         turns = [
             {"speaker": "agent", "text": "Hello, how can I help?"},
@@ -139,10 +134,23 @@ def test_classify_is_deterministic_for_identical_input():
         phone = "+15551234567"
         a = classify_module.classify(turns, phone)
         b = classify_module.classify(turns, phone)
-        assert a == b, "classify() must return identical output for identical input"
+        assert _without_latency(a) == _without_latency(b), (
+            "classify() must return identical non-timing output for identical input"
+        )
     finally:
         agent.config.build_chat_llm = orig_build
-        _classify_node.retrieve = orig_retrieve
+        _classify_node.retrieve = orig_classify_retrieve
+        classify_module.retrieve = orig_orchestrator_retrieve
+
+
+def _without_latency(out: dict) -> dict:
+    """Drop wall-clock timings before comparing deterministic payloads."""
+    clean = copy.deepcopy(out)
+    try:
+        clean["trainer_log"]["ai_prediction"].pop("latency_ms", None)
+    except (KeyError, TypeError, AttributeError):
+        pass
+    return clean
 
 
 # ─── No `ChatOpenAI(` constructors outside agent/config.py ─────────────
