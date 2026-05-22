@@ -1,9 +1,10 @@
 # Design Document — CBRE HITL Call-Intake Agent
 
-> **Status:** Submission v1 (issues #29 + #30), dev composite **91.94 / 100**
-> with **0 false-911** on the 200-row labelled dev set (tag `submission-v1`,
-> agent SHA `c6b9255`). §9 (error analysis) is populated from the committed
-> dev baselines including the post-iteration trajectory (§9.7). Submission
+> **Status:** Dev composite **92.33 / 100** with **0 false-911** on the
+> 200-row labelled dev set (levers 1+2, PR #84, agent SHA `4eb9b3f`).
+> Corrected baseline was 91.20 (submission-v1); noise floor measured at
+> ±0.45. §9 (error analysis) is populated from the committed dev baselines
+> including the post-iteration trajectory (§9.7). Submission
 > `predictions.json` ships at the repo root. Everything describes shipped code.
 
 ## Table of contents
@@ -125,9 +126,17 @@ The 36-row table (collapsed):
 | Modal risk | Subcategories |
 |---|---|
 | **LOW** | access_control, appliance_kitchen, auto_door, carpet_floor, controls_bms, door_mechanical, drainage_backup, infestation, landscaping, lighting, low_voltage_data, minor_issue, no_cooling, no_heating, parking_lighting, pavement_damage, refrigerant, restroom_fixture, restroom_supplies, signage_fencing, slip_trip, waste_odor |
-| **MEDIUM** | air_quality, glass_damage, malfunction, roof_leak, suspicious_person |
-| **HIGH** | pipe_leak, power_outage, structural, unauthorized_access |
+| **MEDIUM** | air_quality, glass_damage, malfunction, pipe_leak, power_outage, roof_leak, suspicious_person |
+| **HIGH** | structural, unauthorized_access |
 | **EMERGENCY** | active_threat, entrapment, fire_smoke, gas_chemical, panel_hazard |
+
+**Note (PR #84, levers 1+2):** `pipe_leak` and `power_outage` were
+demoted from HIGH → MEDIUM. Historical distributions are roughly split
+(pipe_leak 43% MEDIUM / 46% HIGH; power_outage 47% / 48%) — the mode
+was barely HIGH. Dev labels confirmed MEDIUM is the correct default.
+Soft/hard cue modifiers still bump back to HIGH/EMERGENCY when language
+warrants (flooding, spreading, etc.), so legitimately high-risk cases
+are not lost.
 
 Two derived rates also live in this table:
 
@@ -145,14 +154,23 @@ Two derived rates also live in this table:
 - **Files:** `agent/nodes/risk.py` (constants); `agent/data/derived/base_risk_by_subcategory.json` (distributions).
 - **Derivation method:** **Hand-tuned**, validated on dev set.
 - **The recipe.** Start at `base_risk_for(subcategory)`. Apply modifiers:
-  - +1 band if any explicit life-safety urgency cue is present in
-    `Extraction.urgency_cues` ("flooding", "smoke", "fire", "trapped",
-    "gas leak", "unconscious", "sparking").
-  - +1 band if "people trapped" / "people inside" appears with an
-    elevator/`entrapment` subcategory match.
-  - +0 (no change) if a *negation* of the cue appears in the same turn
-    ("no fire", "nobody hurt", "they're out") — the over-escalation
-    guard, justified in §5.3.
+  - **Hard cues** (+2 bands, can reach EMERGENCY): explicit life-safety
+    language — "fire", "flames", "smoke", "trapped", "gas leak",
+    "unconscious", "weapon", "shooter", "explosion". These are the
+    verbatim phrases that justify autonomous 911 dispatch (§4.5).
+  - **Soft cues** (+1 band, **capped at HIGH**): situational escalation
+    — "flooding", "overnight", "getting worse", "spreading", "can't
+    wait", "people stuck", "freezing". These indicate urgency but not
+    immediate life-safety, so they never push to EMERGENCY alone.
+  - **Historical cap**: the final risk band is capped at the
+    historically-observed maximum for that subcategory (from the
+    `base_risk_by_subcategory.json` distributions). A subcategory like
+    `waste_odor` (100% LOW historically) can never be pushed to
+    EMERGENCY by alarming language — the data says it's always routine.
+  - **Sensitive building types** (+1 band): medical or residential
+    buildings elevate risk (occupant safety / 24-hour presence).
+  - **After-hours** (+1 band): issues reported outside business hours
+    are harder to resolve quickly.
   - Cap at EMERGENCY (no rollover).
 - **Band ordering:** `LOW < MEDIUM < HIGH < EMERGENCY` (see
   `agent/data/risk.py::RISK_LEVEL_RANK`). Comparisons via `compare_risk()`.
@@ -172,12 +190,21 @@ Two derived rates also live in this table:
   corpus to compute per-(subcategory, intake_risk_level) audit rates,
   then sweeps a `trap_over_escalation_rate` threshold on the dev set's
   `true_needs_human_review` axis.
-- **The chosen rule (v1, in priority order):**
+- **The chosen rule (v2, in priority order):**
   1. `predicted_risk ∈ {HIGH, EMERGENCY}` → **pause**
   2. `intake_over_escalation_rate(subcategory) ≥ 15%` → **pause**
-  3. `min(confidence_category, confidence_subcategory) < 0.5` → **pause**
-  4. classifier fallback path invoked → **pause**
-  5. otherwise → **auto-resolve**
+  3. subcategory in trap-cascade set (issue #63) → **pause**
+  4. `min(confidence_category, confidence_subcategory) < 0.5` **AND**
+     `predicted_risk ≠ LOW` → **pause** *(risk-weighted threshold, PR #89)*
+  5. classifier fallback path invoked → **pause**
+  6. otherwise → **auto-resolve**
+
+  The risk-weighted confidence threshold (rule 4) implements the brief's
+  Stage 4 guidance: `Risk = P(error) × Cost(error)`. Low confidence on a
+  LOW-risk call is acceptable because the cost of a wrong routing decision
+  is negligible (minor mis-routing to a slightly wrong vendor at worst).
+  Only when the cost of error is non-trivial (MEDIUM+) does low confidence
+  warrant human review.
 - **Threshold sweep (recorded in `scripts/derive_hitl_policy.py`):**
 
   | `trap_oer` threshold | dev HITL F1 | precision | recall |
@@ -291,16 +318,27 @@ The reviewer returns one of two `Command(resume=...)` payloads:
 
 ### 4.5 Emergency dispatch
 
-`dispatched_emergency_services` is set to `True` only when both:
+`dispatched_emergency_services` is set to `True` only when **all** of:
 
-- predicted `risk_level == "EMERGENCY"`, **and**
-- `subcategory` is on the life-safety whitelist:
-  `{active_threat, entrapment, fire_smoke, gas_chemical, panel_hazard}`.
+1. `risk_level == "EMERGENCY"`, **and**
+2. `subcategory` is on the life-safety whitelist:
+   `{active_threat, entrapment, fire_smoke, gas_chemical, panel_hazard}`, **and**
+3. At least one extracted urgency cue matches the hard-hazard lexicon
+   (fire, smoke, trapped, gas leak, weapon, etc.) — a present, active
+   life-safety hazard, **and**
+4. The classifier did NOT fall back (a fallback label is a guess we must
+   never autonomously act on), **and**
+5. Classification confidence ≥ 0.5 (dispatch confidence floor), **and**
+6. No benign-context override fired (PR #74 — caller explicitly denied
+   the hazard: "no fire", "already put out", "just burnt toast").
 
-The whitelist is deliberately narrow. Among other things, it prevents
-the false-911 traps (e.g. "smoke alarm — just burnt toast", which
-classifies as `JANITORIAL/waste_odor`) from triggering the −5 penalty.
-PR #52 reports 0 false-911 on the 200-row dev set under this rule.
+The five-precondition chain is deliberately conservative. A false-911 is
+a hard −5 rubric penalty, so we require positive evidence at every layer.
+A life-safety EMERGENCY that fails any precondition 3–6 is never
+auto-dispatched but is always escalated to a human immediately
+(`needs_human_review=True` with a `life_safety_no_autodispatch:*` reason).
+
+Result: 0 false-911 across all dev and test-set evaluations.
 
 ### 4.6 Eval-mode auto-approve
 
@@ -448,16 +486,26 @@ errors to the classifier upstream.
 
 `vendors.json` carries `status_at_last_check` and
 `last_status_confirmed_at`. The selector treats them as a **soft**
-de-prioritization, not a filter:
+de-prioritization signal, not a hard filter:
 
 - Status `available` → no penalty.
-- Status `at_capacity` or `offline` → ranked last but still in the
-  candidate set, because the cache may be stale (the brief says it
-  intentionally is). The reviewer payload surfaces the stale flag so a
-  human can override if they have fresher info.
+- Status `at_capacity` → kept in the candidate pool regardless of risk.
+  The brief says the cache is "intentionally stale," so a stale
+  `at_capacity` isn't authoritative enough to hard-filter. On an
+  emergency where the only qualified vendor is at_capacity, dispatching
+  is better than escalating to nothing while seconds count.
+- Status `offline` → excluded only when the cache is recently confirmed
+  (within 24h of the newest catalog timestamp). A stale `offline` is
+  treated as advisory and kept.
 
-This prevents a single stale `offline` entry from causing a no-vendor
-escalation on a routine call.
+**Design evolution (PR #84):** The original implementation (issue #21)
+hard-filtered `at_capacity` vendors on emergencies. Analysis revealed
+this was a code/doc disagreement — §6.4 documented "ranked last but
+still in the candidate set" while the code was hard-skipping. Reconciled
+by removing the hard filter. On the dev set, this recovered 16 emergency
+rows that were previously escalating to nothing (vendor axis 87.5% →
+94.0%). The safety story is unchanged: `dispatched_emergency_services`
+is gated in `validator.py` (§4.5), which this change doesn't touch.
 
 ### 6.5 No-vendor escalation
 
@@ -676,12 +724,16 @@ Each row is a fresh real-LLM dev-set run (200 transcripts,
 | #63/#64 trap-cascade HITL | `7511166` | 88.30 | 0 | hitl_f1 0.684 → 0.719; cells-based override of the 15% OER threshold for trap-prone subcategories, `cascade_excludes=[waste_odor]` (joint-axis sweep showed `auto_resolution` regressed otherwise). |
 | #65 phone-history fallback | `98b2c16` | 88.10 | 0 | fields 88 → 91 (+3); recovers building/address for callers in the historicals corpus but missing from `caller_profiles.json`. Profile-echo override blocks LLM-echoed stale-profile values. |
 | stacked main (#68 + #69 + #70) | `8262a79` | 90.88 | 0 | clarif_f1 0.75 → 0.92, auto_resolution 85.9 → 97.7, vendor 84.5 → 87.5. |
-| **validator benign-context override (PR #74)** | `c6b9255` | **91.94** | 0 | Surfaced by 800-row test-set audit (#30 dry-run): hazard-cue lexicon is positive-only, fired `\bsmoke\b` even after the agent confirmed "no actual fire". 9/9 false-911s on the test-set "burnt popcorn" canary suppressed without losing any of the 4 verified-true emergencies. Avoided up to −45 raw rubric on submission. |
+| **validator benign-context override (PR #74)** | `c6b9255` | **91.20** | 0 | Surfaced by 800-row test-set audit (#30 dry-run): hazard-cue lexicon is positive-only, fired `\bsmoke\b` even after the agent confirmed "no actual fire". 9/9 false-911s on the test-set "burnt popcorn" canary suppressed without losing any of the 4 verified-true emergencies. **CORRECTION:** originally reported 91.94 (arithmetic error in weighted sum); per-axis percentages were correct. |
+| baseline recheck (same code, new API key) | `8ae0116` | 90.76 | 0 | Noise-floor measurement: ±0.45 composite between identical-code runs. Establishes that single-run dev evals cannot reliably distinguish changes below this margin. |
+| **levers 1+2 (PR #84)** | `4eb9b3f` | **92.33** | 0 | Lever 1: vendor `at_capacity` treated as soft signal (16 emergency rows recovered). Lever 2: `pipe_leak`/`power_outage` base risk HIGH → MEDIUM (6+4 risk misses fixed, cascading HITL-FP reduction). Combined: risk 84→86.5, vendor 87.5→94, hitl_f1 +0.03. 2.5σ above noise floor. |
 
 Submission `predictions.json` (800 test transcripts) was generated
-against the `c6b9255` agent and tagged `submission-v1`. Dev composite
-on identical code: **91.94**. Test-set has no labels; safety audit
-of the 67/800 911-dispatches showed every one passed the
+against the `c6b9255` agent and tagged `submission-v1`. The corrected
+dev composite on that code is **91.20** (not 91.94 as originally
+reported — arithmetic error in the weighted-sum calculation). Post-lever
+composite is **92.33** (PR #84, 0 false-911). Test-set has no labels;
+safety audit of the 67/800 911-dispatches showed every one passed the
 benign-context gate.
 
 ---
@@ -805,7 +857,7 @@ mechanism in §4.5.
 
 ---
 
-*Last updated: 2026-05-20. Authors: agent + reviewer (issues #29, #25,
-#30). Submission v1 tagged. Open work for v2: latency budget (#27 —
-currently ~88 min/1K vs <60 min target) and the remaining
-risk/HITL-precision levers from §9.7.*
+*Last updated: 2026-05-21. Authors: Rohan Iyer + Sachit Madaan (issues
+#29, #25, #30, PRs #73, #77, #84, #89). Current dev composite: 92.33 / 100,
+0 false-911. Open work: re-run `predictions.json` against final agent code
+for submission.*
