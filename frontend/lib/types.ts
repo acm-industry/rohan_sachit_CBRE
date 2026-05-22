@@ -11,7 +11,16 @@ export const PIPELINE_STAGES = [
 ] as const;
 
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
-export type Stage = PipelineStage | "trainer_log";
+// "voice" + "voice_response" + "transcript" are emitted by the backend's
+// voice-mode path: one transcript per turn, one voice with the bundled
+// turns payload, one voice_response with TTS audio at end-of-pipeline.
+export type Stage =
+  | PipelineStage
+  | "trainer_log"
+  | "voice"
+  | "voice_response"
+  | "transcript"
+  | "pipeline";
 
 export type StageStatus =
   | "started"

@@ -19,10 +19,6 @@ test-contract:  ## Run the schema-conformance canary (issue #2). Required to pas
 	$(VENV_PY) tests/test_contract.py
 
 test-fast:  ## Run every test that doesn't need OPENAI_API_KEY. Should be < 30s on a laptop.
-	@# Globs tests/test_*.py and skips the LLM-backed / RAG-store suites
-	@# (test_classify, test_extract, test_rag_build, test_rag_retriever).
-	@# test_contract is the schema-canary; runs first and short-circuits
-	@# if it fails.
 	@for f in tests/test_*.py; do \
 		case "$$(basename $$f)" in \
 		  test_classify.py|test_extract.py|test_rag_build.py|test_rag_retriever.py) continue ;; \
