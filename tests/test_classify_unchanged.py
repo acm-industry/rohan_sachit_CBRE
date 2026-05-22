@@ -45,7 +45,7 @@ from agent.nodes.vendor_select import VendorSelection  # noqa: E402
 # ─── Layer 1: source pin ───────────────────────────────────────────────
 
 EXPECTED_CLASSIFY_HASH = (
-    "db5314ef5c303d13e7879a23bf99ba668d99d1198ca4f62ab43ddedac385f4be"
+    "5c053c326218b4a984ae38202762429418b3a35d9e200b9ea7bc7d3910c01033"
 )
 
 
@@ -199,9 +199,21 @@ def test_classify_mocked_snapshot():
     ai = tl["ai_prediction"]
     assert ai["category"] == "PLUMBING"
     assert ai["subcategory"] == "drainage_backup"
+    assert ai["building_name"] == "Pacific Ridge Medical Plaza"
+    assert ai["address"] == "3200 Pacific Coast Hwy"
+    assert ai["floor"] == "Floor 9"
     assert ai["dispatched_vendor_id"] == "v_002"
+    assert ai["call_summary"] == result["call_summary"]
+    assert ai["reasoning"] == "drainage blocked"
+    assert ai["classification_reasoning"] == "drainage blocked"
+    assert ai["hitl_reasons"] == ["auto_resolve:no_flags_fired"]
+    assert ai["clarification_reasons"] == []
     assert ai["retrieved_record_ids"] == ["TKT-2024-00001", "TKT-2024-00002"]
     assert tl["human_override"] is None
+    assert tl["final_decision"]["building_name"] == "Pacific Ridge Medical Plaza"
+    assert tl["final_decision"]["address"] == "3200 Pacific Coast Hwy"
+    assert tl["final_decision"]["floor"] == "Floor 9"
+    assert tl["final_decision"]["call_summary"] == result["call_summary"]
 
 
 if __name__ == "__main__":
