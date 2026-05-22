@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 from typing import Any, List, Optional
 
+import pytest
+
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 import logging  # noqa: E402
 logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
@@ -309,7 +311,16 @@ def test_classify_falls_back_when_both_attempts_fail():
 
 
 def _has_openai_key() -> bool:
-    return bool(os.environ.get("OPENAI_API_KEY"))
+    return (
+        os.environ.get("OPENAI_LIVE_TEST") == "1"
+        and bool(os.environ.get("OPENAI_API_KEY"))
+    )
+
+
+def _openai_skip_reason() -> str:
+    if os.environ.get("OPENAI_LIVE_TEST") != "1":
+        return "live OpenAI tests skipped — set OPENAI_LIVE_TEST=1 to run"
+    return "live OpenAI tests skipped — missing OPENAI_API_KEY"
 
 
 def _load_dev(transcript_id: str) -> dict:
@@ -328,7 +339,7 @@ def _classify_dev(transcript_id: str) -> tuple[Classification, dict]:
 def test_e2e_normal_drainage_backup():
     """EVAL-0004: breakroom sink not draining → PLUMBING/drainage_backup."""
     if not _has_openai_key():
-        return
+        pytest.skip(_openai_skip_reason())
     c, _ = _classify_dev("EVAL-0004")
     assert c.category_str == "PLUMBING"
     assert c.subcategory_str == "drainage_backup"
@@ -343,7 +354,7 @@ def test_e2e_over_escalation_trap_burnt_toast():
     when the caller explicitly clarifies it's just burnt food.
     """
     if not _has_openai_key():
-        return
+        pytest.skip(_openai_skip_reason())
     c, _ = _classify_dev("EVAL-0788")
     assert c.category_str == "JANITORIAL", f"expected JANITORIAL, got {c.category_str}"
     assert c.subcategory_str == "waste_odor", f"expected waste_odor, got {c.subcategory_str}"
@@ -356,7 +367,7 @@ def test_e2e_over_escalation_trap_drop_ceiling_water_leak():
     nobody hurt'. Root cause is water; tile is a symptom.
     """
     if not _has_openai_key():
-        return
+        pytest.skip(_openai_skip_reason())
     c, _ = _classify_dev("EVAL-0319")
     assert c.category_str == "PLUMBING"
     assert c.subcategory_str == "roof_leak"
@@ -369,7 +380,7 @@ def test_e2e_genuine_life_safety_active_threat():
     safety incident, the classifier still escalates correctly.
     """
     if not _has_openai_key():
-        return
+        pytest.skip(_openai_skip_reason())
     c, _ = _classify_dev("EVAL-0727")
     assert c.category_str == "SECURITY"
     assert c.subcategory_str == "active_threat"
@@ -382,7 +393,7 @@ def test_e2e_taxonomy_disambiguation_sprinkler_irrigation():
     belongs to landscaping, not plumbing.
     """
     if not _has_openai_key():
-        return
+        pytest.skip(_openai_skip_reason())
     c, _ = _classify_dev("EVAL-0161")
     assert c.category_str == "PEST_SPECIALTY"
     assert c.subcategory_str == "landscaping"
@@ -401,15 +412,14 @@ if __name__ == "__main__":
         try:
             fn()
             print(f"  PASS  {name}")
+        except pytest.skip.Exception as e:
+            print(f"  SKIP  {name}: {e}")
+            skipped += 1
         except Exception as e:
-            if not _has_openai_key() and name.startswith("test_e2e_"):
-                print(f"  SKIP  {name} (no OPENAI_API_KEY)")
-                skipped += 1
-            else:
-                print(f"  FAIL  {name}: {type(e).__name__}: {e}")
-                if not isinstance(e, AssertionError):
-                    traceback.print_exc()
-                failed += 1
+            print(f"  FAIL  {name}: {type(e).__name__}: {e}")
+            if not isinstance(e, AssertionError):
+                traceback.print_exc()
+            failed += 1
     total = len(tests)
     print(f"\n{total - failed - skipped}/{total} passed, {skipped} skipped, {failed} failed")
     sys.exit(1 if failed else 0)

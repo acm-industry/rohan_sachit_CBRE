@@ -14,7 +14,8 @@ Layers:
      - EVAL-0027: known caller, transcript+profile aligned (clear case)
      - EVAL-0006: anonymous caller, transcript explicit on location
      - EVAL-0004: known caller, transcript-overrides-profile (Floor 9 vs Floor 12)
-   Gated on `OPENAI_API_KEY` so the suite still runs cleanly without a key.
+   Gated on `OPENAI_LIVE_TEST=1` + `OPENAI_API_KEY` so the suite still
+   runs cleanly without network access.
 """
 from __future__ import annotations
 
@@ -23,6 +24,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, List, Optional
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -273,7 +276,16 @@ def test_extract_passes_anonymous_block_for_inactive_caller():
 
 
 def _has_openai_key() -> bool:
-    return bool(os.environ.get("OPENAI_API_KEY"))
+    return (
+        os.environ.get("OPENAI_LIVE_TEST") == "1"
+        and bool(os.environ.get("OPENAI_API_KEY"))
+    )
+
+
+def _openai_skip_reason() -> str:
+    if os.environ.get("OPENAI_LIVE_TEST") != "1":
+        return "live OpenAI tests skipped — set OPENAI_LIVE_TEST=1 to run"
+    return "live OpenAI tests skipped — missing OPENAI_API_KEY"
 
 
 def _load_dev_row(transcript_id: str) -> dict:
@@ -284,8 +296,7 @@ def _load_dev_row(transcript_id: str) -> dict:
 def test_e2e_known_caller_clear_location():
     """EVAL-0027: known caller, transcript and profile aligned on building."""
     if not _has_openai_key():
-        print("    SKIP (no OPENAI_API_KEY)")
-        return
+        pytest.skip(_openai_skip_reason())
     row = _load_dev_row("EVAL-0027")  # Redwood Corporate Plaza, Floor 4, Suite 408
     e = extract(row["turns"], row["caller_phone"])
 
@@ -301,8 +312,7 @@ def test_e2e_known_caller_clear_location():
 def test_e2e_unknown_caller_explicit_location():
     """EVAL-0006: anonymous caller; transcript states full location explicitly."""
     if not _has_openai_key():
-        print("    SKIP (no OPENAI_API_KEY)")
-        return
+        pytest.skip(_openai_skip_reason())
     row = _load_dev_row("EVAL-0006")  # Torrance Gateway Center, Floor 2, Suite 205
     e = extract(row["turns"], row["caller_phone"])
 
@@ -323,8 +333,7 @@ def test_e2e_known_caller_transcript_overrides_profile_floor():
     confidence on building_name should be lower than confidence on floor).
     """
     if not _has_openai_key():
-        print("    SKIP (no OPENAI_API_KEY)")
-        return
+        pytest.skip(_openai_skip_reason())
     row = _load_dev_row("EVAL-0004")
     e = extract(row["turns"], row["caller_phone"])
 
@@ -362,13 +371,12 @@ if __name__ == "__main__":
         try:
             fn()
             print(f"  PASS  {name}")
+        except pytest.skip.Exception as e:
+            print(f"  SKIP  {name}: {e}")
+            skipped += 1
         except AssertionError as e:
-            if not _has_openai_key() and name.startswith("test_e2e_"):
-                print(f"  SKIP  {name} (no OPENAI_API_KEY)")
-                skipped += 1
-            else:
-                print(f"  FAIL  {name}: {e}")
-                failed += 1
+            print(f"  FAIL  {name}: {e}")
+            failed += 1
         except Exception as e:
             print(f"  ERROR {name}: {type(e).__name__}: {e}")
             traceback.print_exc()

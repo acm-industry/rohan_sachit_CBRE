@@ -35,14 +35,43 @@ import asyncio
 import sys
 from typing import Any
 
-from deepgram import DeepgramClient, LiveOptions, LiveTranscriptionEvents
-from elevenlabs import AsyncElevenLabs
+try:
+    from deepgram import DeepgramClient, LiveOptions, LiveTranscriptionEvents
+except ImportError:  # pragma: no cover - exercised by import-safety tests.
+    DeepgramClient = None  # type: ignore[assignment]
+    LiveOptions = None  # type: ignore[assignment]
+    LiveTranscriptionEvents = None  # type: ignore[assignment]
+
+try:
+    from elevenlabs import AsyncElevenLabs
+except ImportError:  # pragma: no cover - exercised by import-safety tests.
+    AsyncElevenLabs = None  # type: ignore[assignment]
 
 
 _DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # ElevenLabs "George"
 _OPEN_EVENT_TIMEOUT_S = 3.0
 _KEEPALIVE_INTERVAL_S = 5.0
 _FINALIZE_GRACE_S = 0.5
+
+
+def _require_deepgram_sdk() -> None:
+    if (
+        DeepgramClient is None
+        or LiveOptions is None
+        or LiveTranscriptionEvents is None
+    ):
+        raise RuntimeError(
+            "Deepgram SDK is required for voice STT. Install the optional "
+            "voice demo dependencies before running VoiceSession.connect()."
+        )
+
+
+def _require_elevenlabs_sdk() -> None:
+    if AsyncElevenLabs is None:
+        raise RuntimeError(
+            "ElevenLabs SDK is required for voice TTS. Install the optional "
+            "voice demo dependencies before running VoiceSession.speak()."
+        )
 
 
 class VoiceSession:
@@ -84,6 +113,9 @@ class VoiceSession:
 
     async def connect(self) -> None:
         """Open the Deepgram live-transcription websocket."""
+        _require_deepgram_sdk()
+        _require_elevenlabs_sdk()
+
         self._dg_client = DeepgramClient(api_key=self._dg_key)
         self._dg_connection = self._dg_client.listen.asyncwebsocket.v("1")
         self._ready_event = asyncio.Event()
@@ -278,6 +310,8 @@ class VoiceSession:
         for TTS without ever calling connect(). The ElevenLabs client is
         created lazily on first speak().
         """
+        _require_elevenlabs_sdk()
+
         if self._eleven_client is None:
             self._eleven_client = AsyncElevenLabs(api_key=self._eleven_key)
 

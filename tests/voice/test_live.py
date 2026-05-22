@@ -6,17 +6,26 @@ Run with: VOICE_LIVE_TEST=1 pytest tests/voice/test_live.py -v
 
 from __future__ import annotations
 
+import asyncio
 import os
 import struct
 
 import pytest
 
-from voice.session import VoiceSession
-
 pytestmark = pytest.mark.skipif(
     os.environ.get("VOICE_LIVE_TEST") != "1",
     reason="Live API tests skipped — set VOICE_LIVE_TEST=1 to run",
 )
+
+if os.environ.get("VOICE_LIVE_TEST") == "1":
+    pytest.importorskip(
+        "deepgram", reason="Deepgram SDK is required for live voice tests"
+    )
+    pytest.importorskip(
+        "elevenlabs", reason="ElevenLabs SDK is required for live voice tests"
+    )
+
+from voice.session import VoiceSession
 
 
 def _silence_pcm(duration_s: float = 1.0) -> bytes:
@@ -34,29 +43,33 @@ def live_session() -> VoiceSession:
 
 
 class TestLiveSTT:
-    @pytest.mark.asyncio
-    async def test_connect_and_send_silence(
+    def test_connect_and_send_silence(
         self, live_session: VoiceSession
     ) -> None:
-        await live_session.connect()
-        try:
-            result = await live_session.transcribe_chunk(_silence_pcm(0.5))
-            # Silence may produce None or empty transcript — both are valid
-            if result is not None:
-                assert "text" in result
-                assert "is_final" in result
-        finally:
-            await live_session.close()
+        async def run() -> None:
+            await live_session.connect()
+            try:
+                result = await live_session.transcribe_chunk(_silence_pcm(0.5))
+                # Silence may produce None or empty transcript — both are valid
+                if result is not None:
+                    assert "text" in result
+                    assert "is_final" in result
+            finally:
+                await live_session.close()
+
+        asyncio.run(run())
 
 
 class TestLiveTTS:
-    @pytest.mark.asyncio
-    async def test_speak_returns_audio(self, live_session: VoiceSession) -> None:
-        await live_session.connect()
-        try:
-            audio = await live_session.speak("Hello, this is a test.")
-            assert len(audio) > 0
-            # MP3 files start with ID3 tag or MPEG sync word
-            assert audio[:3] == b"ID3" or audio[:2] == b"\xff\xfb"
-        finally:
-            await live_session.close()
+    def test_speak_returns_audio(self, live_session: VoiceSession) -> None:
+        async def run() -> None:
+            await live_session.connect()
+            try:
+                audio = await live_session.speak("Hello, this is a test.")
+                assert len(audio) > 0
+                # MP3 files start with ID3 tag or MPEG sync word
+                assert audio[:3] == b"ID3" or audio[:2] == b"\xff\xfb"
+            finally:
+                await live_session.close()
+
+        asyncio.run(run())
