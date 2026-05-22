@@ -1,7 +1,7 @@
 # Runtime dependencies for the CBRE HITL call-intake agent.
-# Pinned for reproducibility; regenerated from a clean venv at submission
-# time per issue #31. Stub in issue #1 uses stdlib only — these pins are for
-# downstream issues that wire in LangGraph + the LLM/embedding stack.
+# Version ranges (>=X,<Y) match the resolved versions in the .venv at
+# submission time; upper bounds are conservative against next-major
+# breaks. Grader command: `pip install -r requirements.txt`.
 
 # Orchestration
 langgraph>=0.2.50,<0.4
@@ -16,6 +16,25 @@ pydantic>=2.7,<3
 langchain-chroma>=0.1.4,<0.3
 chromadb>=0.5.0,<1
 langchain-text-splitters>=0.3.0,<0.4
+
+# Live-demo backend (FastAPI + SSE). Not on the grading path —
+# `evaluation/run_eval.py` imports `agent.classify:classify` directly —
+# but required to run `make backend-only`, `make demo`, or the
+# `backend/` route tests.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+
+# Testing (also pulled in by `make test-backend`, which uses pytest;
+# the rest of the test suite is unittest-style and runs on stdlib.)
+pytest>=8,<10
+httpx>=0.27,<1
+
+# Voice demo (optional — `backend/integrations/voice.py` falls back to
+# a canned-transcript stub if these aren't installed, so the pipeline
+# still runs end-to-end without them). Required to actually capture
+# live audio (Deepgram STT) and synthesise replies (ElevenLabs TTS).
+deepgram-sdk>=4,<5
+elevenlabs>=1,<2
 
 # Utilities
 python-dotenv>=1.0,<2

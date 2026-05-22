@@ -250,6 +250,23 @@ class TestBackendRoutes(unittest.TestCase):
     # ─── voice mode (stubbed) ────────────────────────────────────────
 
     def test_voice_audio_uses_stub_transcript(self):
+        # Patch `VoiceSession` so this test works regardless of whether
+        # `deepgram-sdk` is installed in the environment. The real
+        # `VoiceSession` raises ValueError at construction time when no
+        # `DEEPGRAM_API_KEY` is set; before deepgram-sdk was listed in
+        # requirements.txt this test was implicitly relying on the
+        # `backend/integrations/voice.py` ImportError-stub fallback.
+        class _FakeVoiceSession:
+            def __init__(self, **_kwargs):
+                pass
+            async def transcribe(self, _audio_bytes):
+                return [
+                    {"speaker": "agent", "text": "CBRE maintenance, what's going on?"},
+                    {"speaker": "caller", "text": "Stub caller turn."},
+                ]
+            async def speak(self, _text):
+                return b""
+
         fake_events = [
             {"stage": "extract", "status": "complete", "timing_ms": 1, "payload": {}},
         ]
@@ -259,6 +276,9 @@ class TestBackendRoutes(unittest.TestCase):
             with patch(
                 "backend.routes.calls.classify_with_events",
                 _make_fake_pipeline(fake_events),
+            ), patch(
+                "backend.routes.calls.VoiceSession",
+                _FakeVoiceSession,
             ):
                 async with httpx.AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
