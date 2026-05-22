@@ -6,7 +6,7 @@
 | **Authors** | Rohan Iyer · Sachit Madaan |
 | **Submission date** | 2026-05-22 |
 | **Document version** | v3 (final submission) |
-| **Agent SHA** | `4eb9b3f` (levers 1+2, post-PR-#84) |
+| **Reference eval SHA** | `4eb9b3f` (levers 1+2, post-PR-#84 dev run) |
 | **Headline result** | **Dev composite 92.33 / 100** · **0 false-911** · **Voice demo working end-to-end** |
 | **Repo** | [github.com/acm-industry/rohan_sachit_CBRE](https://github.com/acm-industry/rohan_sachit_CBRE) |
 
@@ -180,10 +180,11 @@ achievable.
 Per-stage latency is instrumented in-pipeline: each node is wrapped by
 `_time_stage` (PR #79) which records wall-clock `timing_ms` into the
 graph state and onto a sibling entrypoint `agent.classify:classify_with_events`
-used by the live-demo backend (SSE per-stage events). The submission
-`classify()` is byte-identical to `submission-v1` — a source-hash pin in
-`tests/test_classify_unchanged.py` fails loudly if the function body
-drifts — so the instrumentation surface is additive, not invasive.
+used by the live-demo backend (SSE per-stage events). The batch grader,
+LangGraph wrapper, backend demo, and voice shell all call the same
+`classify()` contract rather than maintaining separate decision logic.
+Contract and determinism tests guard the output schema and orchestration
+surface so demo instrumentation stays additive, not invasive.
 
 ---
 
@@ -423,7 +424,7 @@ The reviewer returns one of two `Command(resume=...)` payloads:
 6. No benign-context override fired (PR #74 — caller explicitly denied
    the hazard: "no fire", "already put out", "just burnt toast").
 
-The five-precondition chain is deliberately conservative. A false-911 is
+The six-precondition chain is deliberately conservative. A false-911 is
 a hard −5 rubric penalty, so we require positive evidence at every layer.
 A life-safety EMERGENCY that fails any precondition 3–6 is never
 auto-dispatched but is always escalated to a human immediately
@@ -849,13 +850,15 @@ Each row is a fresh real-LLM dev-set run (200 transcripts,
 | baseline recheck (same code, new API key) | `8ae0116` | 90.76 | 0 | Noise-floor measurement: ±0.45 composite between identical-code runs. Establishes that single-run dev evals cannot reliably distinguish changes below this margin. |
 | **levers 1+2 (PR #84)** | `4eb9b3f` | **92.33** | 0 | Lever 1: vendor `at_capacity` treated as soft signal (16 emergency rows recovered). Lever 2: `pipe_leak`/`power_outage` base risk HIGH → MEDIUM (6+4 risk misses fixed, cascading HITL-FP reduction). Combined: risk 84→86.5, vendor 87.5→94, hitl_f1 +0.03. 2.5σ above noise floor. |
 
-Submission `predictions.json` (800 test transcripts) was generated
-against the `c6b9255` agent and tagged `submission-v1`. The corrected
-dev composite on that code is **91.20** (not 91.94 as originally
+The repo-root `predictions.json` contains the 800-row test-set run. It
+was generated from the levers 1+2 pipeline (PR #84) before the
+risk-weighted HITL update (PR #89), so final submission packaging should
+regenerate it after the pipeline is frozen. The corrected dev composite
+for the older submission-v1 code was **91.20** (not 91.94 as originally
 reported — arithmetic error in the weighted-sum calculation). Post-lever
-composite is **92.33** (PR #84, 0 false-911). Test-set has no labels;
-safety audit of the 67/800 911-dispatches showed every one passed the
-benign-context gate.
+dev composite is **92.33** (PR #84, 0 false-911). Test-set has no labels;
+safety audit of the generated 911-dispatches showed every dispatch passed
+the benign-context gate.
 
 ---
 
@@ -1050,8 +1053,8 @@ pending merge at time of submission).
 ### 12.3 Why a sibling orchestrator instead of wrapping classify()
 
 `classify_with_events()` is a parallel orchestrator in `agent/classify.py`,
-**not** a wrapper around `classify()`. The output dict is byte-identical;
-the difference is two-fold:
+**not** a wrapper around `classify()`. It uses the same node modules,
+prompts, and policy tables; the differences are two-fold:
 
 1. Per-stage event emission for the live UI.
 2. HITL pause/resume hooks for the reviewer modal — `classify()` runs
@@ -1059,12 +1062,11 @@ the difference is two-fold:
    loop's `pause_at_validator=True` actually waits for a reviewer click.
 
 We considered factoring out a shared inner function and having both
-orchestrators wrap it. Rejected because (a) the byte-identical hash guard
-on `classify()` (`tests/test_classify_unchanged.py`) is load-bearing for
-the grader, and (b) the orchestration shells are short and the duplication
-is easy to keep in sync. **The shared assets are the node modules, the
-prompts, and the policy tables** — those are the only places that could
-silently diverge, and they don't.
+orchestrators wrap it. Rejected because the batch path is the grading
+contract and the live-demo path needs event emission plus pause/resume
+hooks. Keeping the shells separate makes that boundary explicit while
+sharing the load-bearing node modules, prompts, and policy tables — the
+only places that could silently diverge.
 
 ### 12.4 Zero impact on grading
 
@@ -1158,8 +1160,8 @@ for the noise-measurement run).
 **Grade against the test set (800 transcripts, no labels).** Same two
 commands with `--eval evaluation/eval_transcripts_test.json` and a
 held-out answer key. Shipped predictions file at repo-root
-`predictions.json` (tag `submission-v1`) was generated against agent
-SHA `c6b9255`; if grading against the final code, regenerate first.
+`predictions.json` was generated from the levers 1+2 pipeline before
+PR #89; regenerate it after the final pipeline freeze before submission.
 
 **Critical environment variables.**
 
@@ -1196,7 +1198,7 @@ The big design decisions, with the rejected alternative and why:
 | 5 | Audit-corrected RAG retrieval (§5.4) | Copy `intake_*` labels straight into the prompt | Re-trains the classifier on labels QA explicitly flagged as wrong. Demoting reclassified records and inlining `[QA-RECLASSIFIED from ...]` shows the LLM both the corrected label and the pattern of correction. |
 | 6 | At-capacity vendors stay in candidate pool (PR #84 lever 1) | Hard-filter at-capacity vendors on emergencies | Brief says the cache is "intentionally stale". Hard-filtering on a stale `at_capacity` was escalating 16 emergencies to nothing; dispatching the at-capacity vendor is strictly better when seconds count. |
 | 7 | Demote `pipe_leak` / `power_outage` modal risk HIGH → MEDIUM (PR #84 lever 2) | Keep the modal-rule choice | Both subcategories are ~50/50 MEDIUM/HIGH historically; modal-rule was a coin flip that landed on HIGH and triggered HITL on every call. Soft/hard cue modifiers still escalate when language warrants. |
-| 8 | Sibling orchestrator `classify_with_events()` for voice | Wrap `classify()` and add an event-emitter shim | The byte-identical hash guard on `classify()` is load-bearing for graders; a wrapper would either break the hash or require careful boundary management. Sibling orchestrator keeps the grading path frozen. |
+| 8 | Sibling orchestrator `classify_with_events()` for voice | Wrap `classify()` and add an event-emitter shim | The batch `classify()` path is the grading contract; the voice/demo path needs per-stage events and reviewer pause/resume hooks. A sibling orchestrator keeps that boundary explicit while sharing node modules, prompts, and policy tables. |
 | 9 | Build chroma index on first run, don't ship it | Commit the built `chroma_store/` artifact | Spec explicitly permits either; build-step keeps repo size down and lets graders use their preferred embedding model. Trade-off: requires OpenAI embedding access at grade time. |
 | 10 | Reject PR #90 (prompt disambiguation hints) | Merge for putative classifier wins | Dev eval came back 92.27 (−0.06), with a NEW `waste_odor → fire_smoke` confusion that regressed `over_escalation_trap` 16/16 → 15/16. The signal was within noise floor and the regression was real; closed unmerged. |
 
