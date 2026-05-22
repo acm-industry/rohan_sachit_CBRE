@@ -81,18 +81,32 @@ def test_ai_prediction_snapshot_fields():
         category="FIRE_LIFE_SAFETY",
         subcategory="fire_smoke",
         risk_level="EMERGENCY",
+        building_name="Pacific Ridge Medical Plaza",
+        address="3200 Pacific Coast Hwy",
+        floor="Floor 3",
         dispatched_vendor_id="v_021",
         dispatched_emergency_services=True,
+        call_summary="Fire/smoke detected at Pacific Ridge Medical Plaza.",
         needs_human_review=True,
+        needs_clarification=False,
         confidence_category=0.95,
         confidence_subcategory=0.92,
+        classification_reasoning="Caller reported visible smoke.",
         validator_reasons=["emergency_band:always_pause"],
         risk_reasons=["base_risk=EMERGENCY"],
+        clarification_reasons=[],
         retrieved_record_ids=["REC-001", "REC-002"],
     )
     assert ai["category"] == "FIRE_LIFE_SAFETY"
+    assert ai["building_name"] == "Pacific Ridge Medical Plaza"
+    assert ai["address"] == "3200 Pacific Coast Hwy"
+    assert ai["floor"] == "Floor 3"
     assert ai["dispatched_emergency_services"] is True
+    assert ai["call_summary"].startswith("Fire/smoke")
     assert ai["confidence_category"] == 0.95
+    assert ai["reasoning"] == "Caller reported visible smoke."
+    assert ai["classification_reasoning"] == "Caller reported visible smoke."
+    assert ai["hitl_reasons"] == ["emergency_band:always_pause"]
     assert len(ai["retrieved_record_ids"]) == 2
     assert ai["validator_reasons"] == ["emergency_band:always_pause"]
 
