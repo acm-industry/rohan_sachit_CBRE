@@ -44,7 +44,7 @@ test-backend:  ## Run the backend route + classify_with_events tests
 backend-only:  ## Start FastAPI on :8000 (demo backend only)
 	$(VENV_PY) -m uvicorn backend.main:app --reload --port 8000
 
-frontend-only:  ## Start Next.js on :3000 if frontend/ exists
+frontend-only:  ## Start Next.js on :3000 (issue-demo-frontend)
 	@if [ -d frontend ]; then \
 		cd frontend && (npm install --silent && npm run dev); \
 	else \

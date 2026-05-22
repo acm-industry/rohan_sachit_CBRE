@@ -70,11 +70,22 @@ def test_trap_prone_subcategory_pauses_on_medium_band():
     assert pause is True
 
 
-def test_low_confidence_pauses_on_routine_subcategory():
+def test_low_confidence_on_low_risk_auto_resolves():
+    """Risk-weighted threshold: LOW risk + low confidence = cost of error
+    is negligible, so auto-resolve rather than pause."""
     pause, reasons = hitl.should_pause("lighting", "LOW",
                                         classification_confidence=0.3)
+    assert pause is False
+    assert any("auto_resolve" in r for r in reasons)
+
+
+def test_low_confidence_on_medium_risk_pauses():
+    """Risk-weighted threshold: MEDIUM risk + low confidence = non-trivial
+    cost of error, so pause for human review."""
+    pause, reasons = hitl.should_pause("lighting", "MEDIUM",
+                                        classification_confidence=0.3)
     assert pause is True
-    assert any("low_confidence:0.30" in r for r in reasons)
+    assert any("low_confidence_high_cost:0.30" in r for r in reasons)
 
 
 def test_high_confidence_does_not_pause():
