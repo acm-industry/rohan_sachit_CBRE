@@ -227,6 +227,20 @@ def validate(
             blocker = "low_confidence"
         pause = True
         reasons.append(f"life_safety_no_autodispatch:{blocker}")
+    elif (
+        subcategory == "waste_odor"
+        and risk_level == "LOW"
+        and hazard_cue
+        and benign_override is not None
+    ):
+        # Benign smoke/odor traps are safe from autonomous 911, but the
+        # caller still mentioned smoke/fire language and explicitly
+        # ruled out a real emergency. Send to a reviewer instead of
+        # silently auto-resolving the odor ticket.
+        pause = True
+        if reasons == ["auto_resolve:no_flags_fired"]:
+            reasons = []
+        reasons.append(f"benign_smoke_odor_review:{benign_override!r}")
 
     return ValidatorResult(
         needs_human_review=pause,

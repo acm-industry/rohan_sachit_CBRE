@@ -75,6 +75,12 @@ _SOFT_ESCALATION_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
     r"\bflood(ing)?\b",            # active flooding, not just water
 ))
 
+_PIPE_LEAK_WATER_VOLUME_PATTERN = re.compile(
+    r"\bflood(?:ing)?\b|\boverflow(?:ing)?\b|\bpool(?:ing)?\b|"
+    r"\bfilling\s+up\b|\bcoming\s+out\b",
+    re.IGNORECASE,
+)
+
 # Building types where occupant safety / 24-hour presence elevates risk.
 _SENSITIVE_BUILDING_TYPES = frozenset({"medical", "residential"})
 
@@ -189,6 +195,13 @@ def assign_risk(
     for cue in extraction.urgency_cues:
         bump, tier = _classify_cue(cue)
         if bump > 0:
+            if (
+                subcategory == "pipe_leak"
+                and tier == "soft"
+                and _PIPE_LEAK_WATER_VOLUME_PATTERN.search(cue)
+            ):
+                reasons.append(f"soft_cue_no_bump:{cue}:pipe_leak_water_volume")
+                continue
             if tier == "soft":
                 rank = min(rank + bump, RISK_LEVEL_RANK["HIGH"])
             else:

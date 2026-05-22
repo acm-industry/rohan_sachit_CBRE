@@ -128,16 +128,14 @@ def test_hard_cues_keep_emergency_subcategory_at_emergency():
     assert r.band == "EMERGENCY"
 
 
-def test_soft_cues_capped_at_high_on_routable_base():
-    """Soft cues (flooding, getting-worse, …) may push the band UP but
-    never beyond HIGH — only hard life-safety cues are permitted to
-    reach EMERGENCY. pipe_leak (base HIGH) + "flooding" (soft +1) now
-    stays at HIGH instead of cascading to EMERGENCY, which prevents
-    false-emergency dispatches on routable-base subcategories."""
+def test_pipe_leak_water_volume_cue_does_not_bump_to_high():
+    """A water-volume cue alone is still a routable pipe leak, not a
+    reviewer-worthy HIGH-risk call. Hard life-safety cues still escalate
+    below."""
     e = _extraction(urgency_cues=["flooding"])  # soft cue: +1
     r = assign_risk(e, "pipe_leak")
-    assert r.band == "HIGH"
-    assert any("soft_cue:flooding" in reason for reason in r.reasons)
+    assert r.band == "MEDIUM"
+    assert any("soft_cue_no_bump:flooding" in reason for reason in r.reasons)
 
 
 def test_hard_cues_uncapped_can_promote_pipe_leak_to_emergency():
