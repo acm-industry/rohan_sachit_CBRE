@@ -64,7 +64,7 @@ def get_settings(*, validate: bool = True) -> Settings:
     LLM (data loaders, schema tests, the issue-#1 stub).
     """
     settings = Settings(
-        chat_model=os.environ.get("AGENT_CHAT_MODEL", "gpt-4o-mini"),
+        chat_model=os.environ.get("AGENT_CHAT_MODEL", "gpt-4.1-mini"),
         chat_temperature=_env_float("AGENT_CHAT_TEMPERATURE", 0.0),
         chat_seed=_env_int_opt("AGENT_CHAT_SEED", 7),
         embedding_model=os.environ.get(

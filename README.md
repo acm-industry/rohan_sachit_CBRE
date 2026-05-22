@@ -92,7 +92,7 @@ Optional (defaults are tuned for determinism):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AGENT_CHAT_MODEL` | `gpt-4o-mini` | Chat model for extraction / classification / risk |
+| `AGENT_CHAT_MODEL` | `gpt-4.1-mini` | Chat model for extraction / classification / risk |
 | `AGENT_CHAT_TEMPERATURE` | `0.0` | Sampling temperature (keep 0 for reproducibility) |
 | `AGENT_CHAT_SEED` | `7` | OpenAI seed parameter when supported |
 | `AGENT_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for the historical-records RAG index |

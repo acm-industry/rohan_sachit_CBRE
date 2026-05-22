@@ -6,8 +6,8 @@
 | **Authors** | Rohan Iyer · Sachit Madaan |
 | **Submission date** | 2026-05-22 |
 | **Document version** | v3 (final submission) |
-| **Reference eval SHA** | `4eb9b3f` (levers 1+2, post-PR-#84 dev run) |
-| **Headline result** | **Dev composite 92.33 / 100** · **0 false-911** · **Voice demo working end-to-end** |
+| **Reference eval SHA** | `321dea2` (main after PR #98 risk/HITL calibration) |
+| **Headline result** | **Dev composite 93.28 / 100** · **0 false-911** · **Voice demo working end-to-end** |
 | **Repo** | [github.com/acm-industry/rohan_sachit_CBRE](https://github.com/acm-industry/rohan_sachit_CBRE) |
 
 > **One-line summary.** A LangGraph agent that classifies facilities-maintenance
@@ -69,10 +69,10 @@ non-trivial (§3.3, PR #89).
 
 **Three headline results.**
 
-- **Composite 92.33 / 100** on the 200-row labelled dev set (`gpt-4o-mini` @
-  temp 0, seed 7), measured by `evaluation/scoring.py`. 2.5σ above the measured
-  noise floor of ±0.45 composite. Top of our trajectory across 7 graded runs
-  (full history in §9.7, per-axis breakdown in §9.0).
+- **Composite 93.28 / 100** on the 200-row labelled dev set (`gpt-4.1-mini` @
+  temp 0, seed 7), measured by `evaluation/scoring.py` after the final
+  risk/HITL calibration pass. The same final logic scored 93.15 with
+  `gpt-4o-mini`; `gpt-4.1-mini` is the pinned submission default.
 - **Zero false-911s** across every dev and test-set run, including the 16-row
   `over_escalation_trap` slice that is specifically designed to bait
   autonomous emergency dispatch (e.g. "smoke alarm — just burnt toast"). The
@@ -88,7 +88,7 @@ derived per-subcategory base-risk table (§3.1), audit-corrected RAG retrieval
 that explicitly does not copy historical labels QA flagged as wrong (§5.4),
 and a risk-weighted HITL gate that pauses on uncertainty *only* when cost is
 non-trivial (§3.3 + PR #89). The classifier itself is unmodified
-`gpt-4o-mini` with a careful prompt — durability comes from the surround.
+`gpt-4.1-mini` with a careful prompt — durability comes from the surround.
 
 ---
 
@@ -719,11 +719,11 @@ joins needed at training time, every row replayable in isolation.
 
 ### 9.0 Per-axis results at a glance
 
-Latest dev-set run (200 transcripts, agent SHA `4eb9b3f`, `gpt-4o-mini` @
-temperature 0 seed 7), reconstructed from `eval_runs/dev_levers12.json`
-trajectory commentary in §9.7. Composite is the value scored by
-`evaluation/scoring.py`; per-axis values are accurate to within the
-±0.45 noise floor.
+The archived per-axis table below is the last fully committed dev-run
+artifact (`eval_runs/dev_levers12.json`). The final post-PR #98 sanity run
+uses `gpt-4.1-mini` @ temperature 0 seed 7 and reached **93.28 composite**
+with **0 false-911**; it is the final submission reference, while the table
+keeps the detailed pre-PR #98 axis breakdown for traceability.
 
 | Axis | Weight | Score | Source |
 |---|---|---|---|
@@ -850,15 +850,15 @@ Each row is a fresh real-LLM dev-set run (200 transcripts,
 | baseline recheck (same code, new API key) | `8ae0116` | 90.76 | 0 | Noise-floor measurement: ±0.45 composite between identical-code runs. Establishes that single-run dev evals cannot reliably distinguish changes below this margin. |
 | **levers 1+2 (PR #84)** | `4eb9b3f` | **92.33** | 0 | Lever 1: vendor `at_capacity` treated as soft signal (16 emergency rows recovered). Lever 2: `pipe_leak`/`power_outage` base risk HIGH → MEDIUM (6+4 risk misses fixed, cascading HITL-FP reduction). Combined: risk 84→86.5, vendor 87.5→94, hitl_f1 +0.03. 2.5σ above noise floor. |
 
-The repo-root `predictions.json` contains the 800-row test-set run. It
-was generated from the levers 1+2 pipeline (PR #84) before the
-risk-weighted HITL update (PR #89), so final submission packaging should
-regenerate it after the pipeline is frozen. The corrected dev composite
-for the older submission-v1 code was **91.20** (not 91.94 as originally
-reported — arithmetic error in the weighted-sum calculation). Post-lever
-dev composite is **92.33** (PR #84, 0 false-911). Test-set has no labels;
-safety audit of the generated 911-dispatches showed every dispatch passed
-the benign-context gate.
+The repo-root `predictions.json` contains the final 800-row test-set run
+from the frozen post-PR #98 pipeline, generated with `gpt-4.1-mini` and
+merged in PR #99. The corrected dev composite for the older submission-v1
+code was **91.20** (not 91.94 as originally reported — arithmetic error in
+the weighted-sum calculation). The PR #84 lever run reached **92.33**; the
+final PR #98 risk/HITL calibration plus `gpt-4.1-mini` default reached
+**93.28** with **0 false-911**. Test-set has no labels; final artifact
+validation confirmed 800 unique rows, 0 schema/error rows, complete trainer
+logs, and 57 emergency-service dispatch predictions.
 
 ---
 
@@ -954,8 +954,8 @@ classifier prompt doesn't change.
 
 Per call: 1 extraction LLM call + 1 classification LLM call + 1
 embedding call (+ ≤1 retry) ≈ ~2K input tokens / ~200 output tokens at
-`gpt-4o-mini`. At list pricing, ~$0.001–$0.002/call. 10K/day → $10–20/day
-in LLM costs. Vector DB and Postgres are negligible at this scale.
+`gpt-4.1-mini`. The cost remains low enough for iterative 1K-call evals
+and 10K/day intake; vector DB and Postgres are negligible at this scale.
 
 ---
 
@@ -1116,7 +1116,7 @@ know we don't have.
    embedding access, first-run build fails. The spec explicitly permits
    either approach; we picked the lighter option.
 8. **Single-LLM-provider concentration.** Everything runs against OpenAI
-   (`gpt-4o-mini` + `text-embedding-3-small`). A provider outage takes
+   (`gpt-4.1-mini` + `text-embedding-3-small`). A provider outage takes
    the whole agent down. Anthropic / local-LLM fallback would be a real
    production hardening.
 9. **Per-axis sensitivity to noise floor.** The HITL-F1 axis at 0.748
@@ -1154,21 +1154,21 @@ python evaluation/scoring.py \
     --predictions eval_runs/dev_run.json
 ```
 
-Expected: composite ≈ 92.33 ± 0.45 (noise floor; see §9.7 row f-prime
-for the noise-measurement run).
+Expected: composite in the low 93s with 0 false-911. The final sanity run
+after PR #98 reached 93.28; the measured LLM noise floor is roughly ±0.45
+composite (see §9.7 row f-prime).
 
 **Grade against the test set (800 transcripts, no labels).** Same two
 commands with `--eval evaluation/eval_transcripts_test.json` and a
-held-out answer key. Shipped predictions file at repo-root
-`predictions.json` was generated from the levers 1+2 pipeline before
-PR #89; regenerate it after the final pipeline freeze before submission.
+held-out answer key. The repo-root `predictions.json` is the final 800-row
+output generated after the pipeline freeze and validated in PR #99.
 
 **Critical environment variables.**
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `OPENAI_API_KEY` | yes | — | Chat + embedding calls |
-| `AGENT_CHAT_MODEL` | no | `gpt-4o-mini` | Pinned per-submission |
+| `AGENT_CHAT_MODEL` | no | `gpt-4.1-mini` | Pinned per-submission |
 | `AGENT_CHAT_TEMPERATURE` | no | `0.0` | Pinned for reproducibility |
 | `AGENT_CHAT_SEED` | no | `7` | OpenAI `seed` (best-effort) |
 | `AGENT_EMBEDDING_MODEL` | no | `text-embedding-3-small` | Changing requires `--force` rebuild of the chroma store |
@@ -1192,7 +1192,7 @@ The big design decisions, with the rejected alternative and why:
 | # | Decision | Rejected alternative | Why |
 |---|---|---|---|
 | 1 | LangGraph for orchestration | Plain Python function-chain | We need explicit pause/resume semantics for HITL — `interrupt()` + `Command(resume=...)` + `update_state()` are first-class in LangGraph. Function chain would require hand-rolling the same primitives. |
-| 2 | OpenAI `gpt-4o-mini` | Anthropic Claude / local Llama | OpenAI is the only provider with `seed` for reproducibility; `gpt-4o-mini` is cheap enough to run 1K-call evals iteratively (~$0.10/run). |
+| 2 | OpenAI `gpt-4.1-mini` | Anthropic Claude / local Llama | OpenAI is the only provider with `seed` for reproducibility; `gpt-4.1-mini` gave the best final dev composite while staying cheap enough for iterative evals. |
 | 3 | Per-subcategory base-risk from history, not taxonomy | Hand-curate from `operational/taxonomy.md` | The QA audit shows intake operators systematically over-state severity. Final (technician-on-site) labels are the same source the scorer uses. |
 | 4 | Risk-weighted HITL gate (PR #89) | Hard low-confidence threshold for every call | Brief says `Risk = P(error) × Cost(error)`. A low-confidence LOW-risk call has trivial cost; pausing it just inflates the reviewer queue and depresses auto-resolution. |
 | 5 | Audit-corrected RAG retrieval (§5.4) | Copy `intake_*` labels straight into the prompt | Re-trains the classifier on labels QA explicitly flagged as wrong. Demoting reclassified records and inlining `[QA-RECLASSIFIED from ...]` shows the LLM both the corrected label and the pattern of correction. |
@@ -1210,7 +1210,7 @@ For readers without AI/ML background. Terms appear in the order most
 useful for understanding this document.
 
 - **LLM (Large Language Model).** A neural network trained on text that
-  takes a string in and returns a string out. We use OpenAI's `gpt-4o-mini`.
+  takes a string in and returns a string out. We use OpenAI's `gpt-4.1-mini`.
   Treat it as a fuzzy function with no memory across calls.
 - **Prompt.** The string you send to an LLM. Includes both the
   instructions ("classify this call into one of these subcategories…") and
@@ -1286,5 +1286,5 @@ useful for understanding this document.
 ---
 
 *Last updated: 2026-05-22. Document version v3 (final submission).
-Authors: Rohan Iyer + Sachit Madaan. Current dev composite: 92.33 / 100,
+Authors: Rohan Iyer + Sachit Madaan. Current dev composite: 93.28 / 100,
 0 false-911. Voice demo working end-to-end.*

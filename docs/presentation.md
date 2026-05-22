@@ -505,7 +505,7 @@ against real reviewer behavior over time.
 
 ---
 
-# 11 · Composite trajectory — 87.95 → 92.33
+# 11 · Composite trajectory — 87.95 → 93.28
 
 | Run | Composite | False-911 | What changed |
 |---|---|---|---|
@@ -515,8 +515,9 @@ against real reviewer behavior over time.
 | stacked main (`8262a79`) | 90.88 | <span class="ok">0</span> | clarif_f1 0.75 → 0.92 · auto-res 85.9 → 97.7 · vendor 84.5 → 87.5 |
 | **validator benign-context override (PR #74, `c6b9255`)** | **91.20** | <span class="ok">0</span> | Suppresses 9 false-911s on "burnt popcorn" canary on test set — would have cost −45 raw |
 | **levers 1+2 (PR #84, `4eb9b3f`)** | **92.33** | <span class="ok">0</span> | vendor 87.5 → 94.0 · risk 84 → 86.5 · hitl_f1 +0.029 — 2.5σ above noise floor |
+| **final risk/HITL calibration (PR #98, `321dea2`)** | **93.28** | <span class="ok">0</span> | pipe_leak water-volume calibration + benign smoke/odor review gate; final default `gpt-4.1-mini` |
 
-<div class="small">All runs: 200-row dev set, gpt-4o-mini @ T=0 seed=7. Noise floor on identical agent code: ±0.45 composite (run f-prime).</div>
+<div class="small">Historical trajectory runs used gpt-4o-mini @ T=0 seed=7. Final submission default is gpt-4.1-mini after the PR #98 risk/HITL calibration pass.</div>
 
 <!--
 _notes:
@@ -540,7 +541,7 @@ Plus 1.13 composite, 2.5 sigma above noise. Zero false-911 across every row.
 <div class="row">
 <div class="col">
 
-**Per-axis at submission (composite 92.33):**
+**Per-axis at submission (final composite 93.28; detailed archived axes from 92.33 run):**
 
 | axis | dev | weight |
 |---|---|---|
@@ -625,7 +626,7 @@ per pod, autoscaled by queue depth. Five things change at scale.
 | **RAG** | local Chroma in process | Hosted vector DB at 100K+ rows, shard collections by `final_category` |
 | **Trainer-log retention** | every row in JSON | All hot for 30 d · overrides indefinite · 10% sample of agreement rows |
 
-**Cost envelope** — ~2K input / ~200 output tokens per call @ `gpt-4o-mini` ≈ **\$0.001–0.002 / call** → **\$10–20 / day** in LLM at 10K calls. Vector DB + Postgres negligible at this scale.
+**Cost envelope** — ~2K input / ~200 output tokens per call @ `gpt-4.1-mini`; still low enough for 10K/day intake, with vector DB + Postgres negligible at this scale.
 
 <!--
 _notes:
@@ -739,7 +740,7 @@ right now; we'll have the final test composite before the deadline.
 
 # 18 · Q&A
 
-**Composite:** `92.33 / 100` on dev (test-set pending re-eval) · **`0 false-911`** across all measured runs · 9 nodes · 36 subcategories · 10K-ticket RAG.
+**Composite:** `93.28 / 100` on dev · final `predictions.json` has 800 validated test rows · **`0 false-911`** across all measured runs · 9 nodes · 36 subcategories · 10K-ticket RAG.
 
 **Sources** *(all in this repo)*
 
