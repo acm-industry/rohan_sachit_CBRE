@@ -80,6 +80,42 @@ def test_trap_subcategory_triggers_review():
     assert "trap_prone" in result.reasons[0]
 
 
+def test_waste_odor_benign_smoke_trap_reviews_without_911():
+    """LOW waste_odor normally auto-resolves, but benign smoke/fire
+    language should still get a human review while preserving no-911."""
+    _reset()
+    transcript = (
+        "[CALLER] Smoke alarm beeped once and there's smoke, but it was just burnt toast.\n"
+        "[AGENT] Can you confirm there's no actual fire or injury right now?\n"
+        "[CALLER] No fire, just the burnt smell."
+    )
+    result = validate(
+        subcategory="waste_odor",
+        risk_level="LOW",
+        classification_confidence=0.95,
+        fallback_invoked=False,
+        extracted_urgency_cues=["smoke"],
+        transcript_text=transcript,
+    )
+    assert result.needs_human_review is True
+    assert result.dispatched_emergency_services is False
+    assert any("benign_smoke_odor_review" in r for r in result.reasons)
+
+
+def test_routine_waste_odor_still_auto_resolves():
+    _reset()
+    result = validate(
+        subcategory="waste_odor",
+        risk_level="LOW",
+        classification_confidence=0.95,
+        fallback_invoked=False,
+        extracted_urgency_cues=[],
+        transcript_text="[CALLER] Trash room odor near the service hallway.",
+    )
+    assert result.needs_human_review is False
+    assert result.dispatched_emergency_services is False
+
+
 # ─── False-911 prevention (the −5 penalty path) ───────────────────────
 
 
