@@ -27,7 +27,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from agent.classify import classify as run_pipeline
+from agent.classify import _decision_snapshot, classify as run_pipeline
 from agent.nodes.trainer_log import assemble_trainer_log, build_ai_prediction
 
 
@@ -97,11 +97,12 @@ def _review_gate_node(state: CallState) -> dict:
         updated_prediction = {**prediction, **override_fields}
 
         ai_pred = prediction.get("trainer_log", {}).get("ai_prediction", {})
+        final_decision = _decision_snapshot(updated_prediction)
         updated_prediction["trainer_log"] = assemble_trainer_log(
             full_transcript=prediction.get("trainer_log", {}).get("full_transcript", ""),
             ai_prediction=ai_pred,
             human_override=override_fields,
-            final_decision={**ai_pred, **override_fields},
+            final_decision=final_decision,
         )
 
         return {
@@ -196,11 +197,12 @@ def override_after_execution(
     ai_pred = prediction.get("trainer_log", {}).get("ai_prediction", {})
 
     updated_prediction = {**prediction, **override_fields}
+    final_decision = _decision_snapshot(updated_prediction)
     updated_prediction["trainer_log"] = assemble_trainer_log(
         full_transcript=prediction.get("trainer_log", {}).get("full_transcript", ""),
         ai_prediction=ai_pred,
         human_override=override_fields,
-        final_decision={**ai_pred, **override_fields},
+        final_decision=final_decision,
     )
 
     graph.update_state(
